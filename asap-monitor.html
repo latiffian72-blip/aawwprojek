@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ASAP MONITOR</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        mono: ['IBM Plex Mono', 'monospace'],
+        sans: ['Plus Jakarta Sans', 'sans-serif'],
+      },
+      colors: {
+        bg:      '#080d1a',
+        surface: '#0d1424',
+        card:    '#111c30',
+        border:  '#1a2840',
+        accent:  '#00d4aa',
+        blue:    '#3b82f6',
+        purple:  '#8b5cf6',
+        amber:   '#f59e0b',
+        danger:  '#ef4444',
+        success: '#10b981',
+        orange:  '#f97316',
+        muted:   '#374151',
+        dim:     '#6b7280',
+        soft:    '#94a3b8',
+        text:    '#e2e8f0',
+      },
+    }
+  }
+}
+</script>
+<style>
+  body { background:#080d1a; font-family:'Plus Jakarta Sans',sans-serif; color:#e2e8f0; overflow-x:hidden; }
+  ::-webkit-scrollbar { width:5px; }
+  ::-webkit-scrollbar-track { background:#0d1424; }
+  ::-webkit-scrollbar-thumb { background:#1a2840; border-radius:4px; }
+  .sidebar { background:linear-gradient(180deg,#0d1424 0%,#080d1a 100%); border-right:1px solid #1a2840; }
+  .card-accent { position:relative; }
+  .card-accent::before { content:''; position:absolute; top:0;left:0;right:0; height:1px; border-radius:12px 12px 0 0; }
+  .card-teal::before   { background:linear-gradient(90deg,#00d4aa,transparent); }
+  .card-purple::before { background:linear-gradient(90deg,#8b5cf6,transparent); }
+  .card-amber::before  { background:linear-gradient(90deg,#f59e0b,transparent); }
+  .card-blue::before   { background:linear-gradient(90deg,#3b82f6,transparent); }
+  .card-green::before  { background:linear-gradient(90deg,#10b981,transparent); }
+  .card-orange::before { background:linear-gradient(90deg,#f97316,transparent); }
+  .gauge-ring { transform:rotate(-90deg); transform-origin:center; }
+  .gauge-ring circle { transition:stroke-dashoffset 1s ease, stroke 0.5s; }
+  .toggle-btn { transition:all 0.3s ease; }
+  .toggle-btn.on  { background:#10b981; box-shadow:0 0 12px rgba(16,185,129,0.4); }
+  .toggle-btn.off { background:#374151; box-shadow:none; }
+  .toggle-knob { transition:transform 0.3s ease; }
+  .toggle-knob.on  { transform:translateX(22px); }
+  .toggle-knob.off { transform:translateX(2px); }
+  .popup-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:100; display:flex; align-items:center; justify-content:center; animation:fadeIn 0.2s ease; backdrop-filter:blur(4px); }
+  .popup-box { background:#111c30; border:1px solid #1a2840; border-radius:16px; padding:28px; width:400px; max-width:92vw; animation:slideUp 0.28s ease; }
+  @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+  @keyframes slideUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes spinFan { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .fan-spin { animation:spinFan var(--fan-speed,1.5s) linear infinite; transform-origin:32px 32px; }
+  .fan-paused { animation-play-state:paused; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+  .blink { animation:blink 1.5s ease-in-out infinite; }
+  @keyframes alertIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+  .alert-toast { animation:alertIn 0.35s ease; }
+  .bar-fill { transition:width 0.8s ease, background-color 0.5s; }
+  .sensor-card { transition:border-color 0.3s, transform 0.2s; cursor:pointer; }
+  .sensor-card:hover { transform:translateY(-2px); }
+  .sensor-card.teal:hover  { border-color:#00d4aa44; }
+  .sensor-card.purple:hover{ border-color:#8b5cf644; }
+  .sensor-card.amber:hover { border-color:#f59e0b44; }
+  .sensor-card.blue:hover  { border-color:#3b82f644; }
+</style>
+</head>
+<body class="min-h-screen flex">
+
+<!-- SIDEBAR -->
+<aside class="sidebar w-52 min-h-screen flex flex-col fixed top-0 left-0 z-20 py-6 px-4">
+  <div class="mb-8">
+    <div class="flex items-center gap-2.5 mb-1">
+      <div class="w-8 h-8 rounded-lg bg-accent/15 border border-accent/30 flex items-center justify-center flex-shrink-0">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M8 1C8 1 3.5 5.5 3.5 9.5a4.5 4.5 0 009 0C12.5 5.5 8 1 8 1z" stroke="#00d4aa" stroke-width="1.3" fill="none"/>
+          <path d="M5.5 10.5C5.5 10.5 6.2 9 8 9s2.5 1.5 2.5 1.5" stroke="#00d4aa" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <p class="font-mono text-sm font-semibold text-accent tracking-widest leading-none">ASAP</p>
+        <p class="font-mono text-[8px] text-dim tracking-widest leading-none mt-0.5">MONITOR</p>
+      </div>
+    </div>
+  </div>
+
+  <nav class="flex-1 space-y-0.5">
+    <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-accent/10 border border-accent/20 mb-4">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+        <rect x="0.5" y="0.5" width="5" height="5" rx="1.5" fill="#00d4aa"/>
+        <rect x="7.5" y="0.5" width="5" height="5" rx="1.5" fill="#00d4aa" opacity="0.4"/>
+        <rect x="0.5" y="7.5" width="5" height="5" rx="1.5" fill="#00d4aa" opacity="0.4"/>
+        <rect x="7.5" y="7.5" width="5" height="5" rx="1.5" fill="#00d4aa"/>
+      </svg>
+      <span class="text-xs font-medium text-accent">Dashboard</span>
+    </div>
+
+    <p class="font-mono text-[8px] text-muted uppercase tracking-widest px-3 py-1">Sensor</p>
+    <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
+      <div class="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0 blink"></div>
+      <span class="text-[11px] text-soft">Kualitas Udara</span>
+    </div>
+    <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
+      <div class="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0 blink" style="animation-delay:.5s"></div>
+      <span class="text-[11px] text-soft">Kadar CO</span>
+    </div>
+    <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
+      <div class="w-1.5 h-1.5 rounded-full bg-amber flex-shrink-0 blink" style="animation-delay:.9s"></div>
+      <span class="text-[11px] text-soft">Partikel PM2.5</span>
+    </div>
+    <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
+      <div class="w-1.5 h-1.5 rounded-full bg-blue flex-shrink-0 blink" style="animation-delay:.3s"></div>
+      <span class="text-[11px] text-soft">Kekeruhan Air</span>
+    </div>
+
+    <p class="font-mono text-[8px] text-muted uppercase tracking-widest px-3 py-1 pt-4">Perangkat</p>
+    <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
+      <div class="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0 blink" style="animation-delay:.7s"></div>
+      <span class="text-[11px] text-soft">Pompa & Blower</span>
+    </div>
+  </nav>
+
+  <div class="border-t border-border pt-4">
+    <div class="flex items-center gap-2 mb-1.5">
+      <div class="w-1.5 h-1.5 rounded-full bg-success blink"></div>
+      <span class="font-mono text-[9px] text-success tracking-wider">SISTEM ONLINE</span>
+    </div>
+    <p class="font-mono text-[8px] text-muted">v1.0.0 · Tugas Akhir</p>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="ml-52 flex-1 min-h-screen p-5">
+
+  <!-- TOP BAR -->
+  <div class="flex items-start justify-between mb-5">
+    <div>
+      <h1 class="font-mono text-lg font-semibold text-text tracking-wide">
+        Monitor <span class="text-accent">ASAP</span>
+      </h1>
+      <p class="text-[11px] text-dim mt-0.5">Pemantauan lingkungan &amp; kontrol sprayer · real-time</p>
+    </div>
+    <!-- Clock widget -->
+    <div class="bg-card border border-border rounded-xl px-5 py-3 text-right min-w-[200px]">
+      <div class="font-mono text-2xl font-semibold text-text tracking-widest tabular-nums" id="clock">--:--:--</div>
+      <div class="font-mono text-[10px] text-soft tracking-wide mt-0.5" id="date-display">-- --- ----</div>
+      <div class="font-mono text-[9px] text-dim tracking-widest mt-0.5 uppercase" id="day-display">--------</div>
+    </div>
+  </div>
+
+  <!-- STATUS PILLS -->
+  <div class="flex flex-wrap gap-2 mb-5">
+    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-success/30 bg-success/10">
+      <div class="w-1.5 h-1.5 rounded-full bg-success blink"></div>
+      <span class="font-mono text-[9px] text-success tracking-wider">SISTEM AKTIF</span>
+    </div>
+    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card" id="pill-mq135">
+      <div class="w-1.5 h-1.5 rounded-full bg-accent blink"></div>
+      <span class="font-mono text-[9px] text-soft tracking-wider">MQ135 OK</span>
+    </div>
+    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card" id="pill-mq7">
+      <div class="w-1.5 h-1.5 rounded-full bg-purple-400 blink"></div>
+      <span class="font-mono text-[9px] text-soft tracking-wider">MQ7 OK</span>
+    </div>
+    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card" id="pill-dsm">
+      <div class="w-1.5 h-1.5 rounded-full bg-amber blink"></div>
+      <span class="font-mono text-[9px] text-soft tracking-wider">DSM501A OK</span>
+    </div>
+    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card" id="pill-turb">
+      <div class="w-1.5 h-1.5 rounded-full bg-blue blink"></div>
+      <span class="font-mono text-[9px] text-soft tracking-wider">TURBIDITY OK</span>
+    </div>
+  </div>
+
+  <!-- ALERT AREA -->
+  <div id="alert-area" class="space-y-2 mb-4"></div>
+
+  <!-- SENSOR SECTION LABEL -->
+  <p class="font-mono text-[8px] text-muted tracking-widest uppercase mb-3">● Sensor Real-Time</p>
+
+  <!-- SENSOR CARDS -->
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+
+    <!-- MQ135 -->
+    <div class="sensor-card teal card-accent card-teal bg-card border border-border rounded-xl p-4 relative overflow-hidden"
+         onclick="openPopup('mq135')">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <p class="font-mono text-[8px] text-dim tracking-widest uppercase">MQ135</p>
+          <p class="text-[11px] font-medium text-soft mt-0.5">Kualitas Udara</p>
+        </div>
+        <svg viewBox="0 0 40 40" class="gauge-ring w-9 h-9 flex-shrink-0">
+          <circle cx="20" cy="20" r="15" fill="none" stroke="#1a2840" stroke-width="3.5"/>
+          <circle id="ring-aq" cx="20" cy="20" r="15" fill="none" stroke="#00d4aa" stroke-width="3.5"
+            stroke-dasharray="94.2" stroke-dashoffset="55" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="mb-2">
+        <span class="font-mono text-3xl font-semibold text-text" id="aq-val">247</span>
+        <span class="font-mono text-[10px] text-dim ml-1">ppm</span>
+      </div>
+      <div class="h-1 bg-surface rounded-full mb-1.5 overflow-hidden">
+        <div class="bar-fill h-full rounded-full bg-accent" id="aq-bar" style="width:41%"></div>
+      </div>
+      <div class="flex justify-between text-[7px] font-mono text-muted mb-2"><span>0</span><span>300</span><span>600</span></div>
+      <div class="flex items-center gap-1.5" id="aq-status-row">
+        <div class="w-1.5 h-1.5 rounded-full bg-success blink"></div>
+        <span class="text-[9px] font-mono text-success" id="aq-status-text">BAIK</span>
+      </div>
+      <canvas id="spark-aq" class="w-full mt-2" height="24"></canvas>
+      <div class="absolute bottom-2 right-2 opacity-20">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 0.5L0.5 9.5h9L5 0.5z" fill="#00d4aa"/></svg>
+      </div>
+    </div>
+
+    <!-- MQ7 -->
+    <div class="sensor-card purple card-accent card-purple bg-card border border-border rounded-xl p-4 relative overflow-hidden"
+         onclick="openPopup('mq7')">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <p class="font-mono text-[8px] text-dim tracking-widest uppercase">MQ7</p>
+          <p class="text-[11px] font-medium text-soft mt-0.5">Kadar CO</p>
+        </div>
+        <svg viewBox="0 0 40 40" class="gauge-ring w-9 h-9 flex-shrink-0">
+          <circle cx="20" cy="20" r="15" fill="none" stroke="#1a2840" stroke-width="3.5"/>
+          <circle id="ring-co" cx="20" cy="20" r="15" fill="none" stroke="#8b5cf6" stroke-width="3.5"
+            stroke-dasharray="94.2" stroke-dashoffset="71" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="mb-2">
+        <span class="font-mono text-3xl font-semibold text-text" id="co-val">38</span>
+        <span class="font-mono text-[10px] text-dim ml-1">ppm</span>
+      </div>
+      <div class="h-1 bg-surface rounded-full mb-1.5 overflow-hidden">
+        <div class="bar-fill h-full rounded-full bg-purple-500" id="co-bar" style="width:24%"></div>
+      </div>
+      <div class="flex justify-between text-[7px] font-mono text-muted mb-2"><span>0</span><span>50</span><span>150</span></div>
+      <div class="flex items-center gap-1.5" id="co-status-row">
+        <div class="w-1.5 h-1.5 rounded-full bg-success blink"></div>
+        <span class="text-[9px] font-mono text-success" id="co-status-text">AMAN</span>
+      </div>
+      <canvas id="spark-co" class="w-full mt-2" height="24"></canvas>
+    </div>
+
+    <!-- DSM501A -->
+    <div class="sensor-card amber card-accent card-amber bg-card border border-border rounded-xl p-4 relative overflow-hidden"
+         onclick="openPopup('dsm')">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <p class="font-mono text-[8px] text-dim tracking-widest uppercase">DSM501A</p>
+          <p class="text-[11px] font-medium text-soft mt-0.5">Partikel PM2.5</p>
+        </div>
+        <svg viewBox="0 0 40 40" class="gauge-ring w-9 h-9 flex-shrink-0">
+          <circle cx="20" cy="20" r="15" fill="none" stroke="#1a2840" stroke-width="3.5"/>
+          <circle id="ring-pm" cx="20" cy="20" r="15" fill="none" stroke="#f59e0b" stroke-width="3.5"
+            stroke-dasharray="94.2" stroke-dashoffset="45" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="mb-2">
+        <span class="font-mono text-3xl font-semibold text-text" id="pm-val">62</span>
+        <span class="font-mono text-[10px] text-dim ml-1">μg/m³</span>
+      </div>
+      <div class="h-1 bg-surface rounded-full mb-1.5 overflow-hidden">
+        <div class="bar-fill h-full rounded-full bg-amber" id="pm-bar" style="width:52%"></div>
+      </div>
+      <div class="flex justify-between text-[7px] font-mono text-muted mb-2"><span>0</span><span>35</span><span>120</span></div>
+      <div class="flex items-center gap-1.5" id="pm-status-row">
+        <div class="w-1.5 h-1.5 rounded-full bg-amber blink"></div>
+        <span class="text-[9px] font-mono text-amber" id="pm-status-text">SEDANG</span>
+      </div>
+      <canvas id="spark-pm" class="w-full mt-2" height="24"></canvas>
+    </div>
+
+    <!-- Turbidity -->
+    <div class="sensor-card blue card-accent card-blue bg-card border border-border rounded-xl p-4 relative overflow-hidden"
+         onclick="openPopup('turb')">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <p class="font-mono text-[8px] text-dim tracking-widest uppercase">TURBIDITY</p>
+          <p class="text-[11px] font-medium text-soft mt-0.5">Kekeruhan Air</p>
+        </div>
+        <svg viewBox="0 0 40 40" class="gauge-ring w-9 h-9 flex-shrink-0">
+          <circle cx="20" cy="20" r="15" fill="none" stroke="#1a2840" stroke-width="3.5"/>
+          <circle id="ring-tb" cx="20" cy="20" r="15" fill="none" stroke="#3b82f6" stroke-width="3.5"
+            stroke-dasharray="94.2" stroke-dashoffset="77" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="mb-2">
+        <span class="font-mono text-3xl font-semibold text-text" id="tb-val">18</span>
+        <span class="font-mono text-[10px] text-dim ml-1">NTU</span>
+      </div>
+      <div class="h-1 bg-surface rounded-full mb-1.5 overflow-hidden">
+        <div class="bar-fill h-full rounded-full bg-blue" id="tb-bar" style="width:18%"></div>
+      </div>
+      <div class="flex justify-between text-[7px] font-mono text-muted mb-2"><span>0</span><span>50</span><span>100</span></div>
+      <div class="flex items-center gap-1.5" id="tb-status-row">
+        <div class="w-1.5 h-1.5 rounded-full bg-success blink"></div>
+        <span class="text-[9px] font-mono text-success" id="tb-status-text">JERNIH</span>
+      </div>
+      <canvas id="spark-tb" class="w-full mt-2" height="24"></canvas>
+    </div>
+  </div>
+
+  <!-- DEVICES + LOG -->
+  <p class="font-mono text-[8px] text-muted tracking-widest uppercase mb-3">● Kontrol Perangkat</p>
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-3 mb-5">
+
+    <!-- Pompa -->
+    <div class="card-accent card-green bg-card border border-border rounded-xl p-5 cursor-pointer sensor-card" onclick="openPopup('pump')">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <p class="font-mono text-[8px] text-dim tracking-widest uppercase">PUMP-01</p>
+          <p class="text-sm font-semibold text-text mt-0.5">Pompa Air Sprayer</p>
+        </div>
+        <div onclick="event.stopPropagation()" class="flex flex-col items-center gap-1">
+          <div class="toggle-btn on w-12 h-6 rounded-full relative cursor-pointer" id="pump-toggle-btn" onclick="togglePump()">
+            <div class="toggle-knob on absolute top-0.5 w-5 h-5 bg-white rounded-full shadow" id="pump-knob"></div>
+          </div>
+          <span class="font-mono text-[8px] text-dim" id="pump-lbl">ON</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 mb-4">
+        <div class="relative w-14 h-14 flex-shrink-0">
+          <svg viewBox="0 0 56 56" class="w-full h-full">
+            <circle cx="28" cy="28" r="24" fill="none" stroke="#1a2840" stroke-width="4"/>
+            <circle id="pump-ring" cx="28" cy="28" r="24" fill="none" stroke="#10b981" stroke-width="4"
+              stroke-dasharray="150.8" stroke-dashoffset="48" stroke-linecap="round"
+              transform="rotate(-90 28 28)" style="transition:all 0.8s ease"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span class="font-mono text-xs font-semibold text-text" id="pump-pct">68</span>
+            <span class="font-mono text-[7px] text-dim">%</span>
+          </div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-medium text-text mb-0.5" id="pump-state-text">Pompa Aktif</p>
+          <p class="text-[10px] text-dim mb-2" id="pump-meta">Debit: 2.4 L/min · Tekanan: 1.2 bar</p>
+          <div class="h-1 bg-surface rounded-full overflow-hidden mb-1">
+            <div class="bar-fill h-full rounded-full bg-success" id="pump-bar" style="width:68%"></div>
+          </div>
+          <p class="font-mono text-[8px] text-muted">Beban: <span id="pump-load-txt">68</span>%</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <div class="w-1.5 h-1.5 rounded-full bg-success blink" id="pump-dot"></div>
+        <span class="font-mono text-[9px] text-success" id="pump-status-txt">BEROPERASI</span>
+      </div>
+    </div>
+
+    <!-- Blower -->
+    <div class="card-accent card-orange bg-card border border-border rounded-xl p-5 cursor-pointer sensor-card" onclick="openPopup('blower')">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <p class="font-mono text-[8px] text-dim tracking-widest uppercase">BLOWER-01</p>
+          <p class="text-sm font-semibold text-text mt-0.5">Blower / Kipas</p>
+        </div>
+        <div onclick="event.stopPropagation()" class="flex flex-col items-center gap-1">
+          <div class="toggle-btn on w-12 h-6 rounded-full relative cursor-pointer" id="blower-toggle-btn" onclick="toggleBlower()">
+            <div class="toggle-knob on absolute top-0.5 w-5 h-5 bg-white rounded-full shadow" id="blower-knob"></div>
+          </div>
+          <span class="font-mono text-[8px] text-dim" id="blower-lbl">ON</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 mb-4">
+        <div class="relative w-14 h-14 flex-shrink-0 flex items-center justify-center">
+          <svg viewBox="0 0 56 56" width="56" height="56">
+            <g id="fan-blades" class="fan-spin" style="--fan-speed:1.5s">
+              <ellipse cx="28" cy="10" rx="7" ry="12" fill="#f97316" opacity="0.85" transform="rotate(0 28 28)"/>
+              <ellipse cx="28" cy="10" rx="7" ry="12" fill="#f97316" opacity="0.55" transform="rotate(120 28 28)"/>
+              <ellipse cx="28" cy="10" rx="7" ry="12" fill="#f97316" opacity="0.35" transform="rotate(240 28 28)"/>
+            </g>
+            <circle cx="28" cy="28" r="5.5" fill="#111c30" stroke="#f97316" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-medium text-text mb-0.5" id="blower-state-text">Blower Aktif</p>
+          <p class="text-[10px] text-dim mb-2" id="blower-meta">Mode: Auto · Suhu: 34°C</p>
+          <div class="h-1 bg-surface rounded-full overflow-hidden mb-1">
+            <div class="bar-fill h-full rounded-full bg-orange" id="blower-bar" style="width:55%"></div>
+          </div>
+          <p class="font-mono text-[8px] text-muted">RPM: <span id="blower-rpm">1650</span> · Speed: <span id="blower-spd">55</span>%</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <div class="w-1.5 h-1.5 rounded-full bg-orange blink"></div>
+        <span class="font-mono text-[9px] text-orange" id="blower-status-txt">BERPUTAR</span>
+      </div>
+    </div>
+
+    <!-- Log Panel -->
+    <div class="card-accent bg-card border border-border rounded-xl p-5">
+      <p class="font-mono text-[8px] text-dim tracking-widest uppercase mb-3">● Log Aktivitas</p>
+      <div id="log-list" class="space-y-2 max-h-44 overflow-y-auto pr-1 text-[10px]"></div>
+    </div>
+  </div>
+
+  <!-- TREND CHART -->
+  <div class="bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-start justify-between flex-wrap gap-3 mb-4">
+      <div>
+        <p class="font-mono text-[8px] text-dim tracking-widest uppercase mb-0.5">● Grafik Tren Real-Time</p>
+        <p class="text-[11px] text-soft">30 data point terakhir — semua sensor</p>
+      </div>
+      <div class="flex flex-wrap gap-4">
+        <div class="flex items-center gap-1.5"><div class="w-4 h-0.5 rounded-full bg-accent"></div><span class="font-mono text-[8px] text-dim">AQ (MQ135)</span></div>
+        <div class="flex items-center gap-1.5"><div class="w-4 h-0.5 rounded-full bg-purple-500"></div><span class="font-mono text-[8px] text-dim">CO (MQ7)</span></div>
+        <div class="flex items-center gap-1.5"><div class="w-4 h-0.5 rounded-full bg-amber"></div><span class="font-mono text-[8px] text-dim">PM2.5 (DSM501A)</span></div>
+        <div class="flex items-center gap-1.5"><div class="w-4 h-0.5 rounded-full bg-blue"></div><span class="font-mono text-[8px] text-dim">Turbidity</span></div>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="grid grid-cols-4 gap-2 mb-4">
+      <div class="bg-surface rounded-lg px-3 py-2 border border-border/50">
+        <p class="font-mono text-[7px] text-dim mb-1 uppercase tracking-wider">Rata-rata AQ</p>
+        <p class="font-mono text-base font-semibold text-accent" id="avg-aq">247</p>
+        <p class="font-mono text-[7px] text-muted">ppm</p>
+      </div>
+      <div class="bg-surface rounded-lg px-3 py-2 border border-border/50">
+        <p class="font-mono text-[7px] text-dim mb-1 uppercase tracking-wider">Rata-rata CO</p>
+        <p class="font-mono text-base font-semibold text-purple-400" id="avg-co">38</p>
+        <p class="font-mono text-[7px] text-muted">ppm</p>
+      </div>
+      <div class="bg-surface rounded-lg px-3 py-2 border border-border/50">
+        <p class="font-mono text-[7px] text-dim mb-1 uppercase tracking-wider">Rata-rata PM</p>
+        <p class="font-mono text-base font-semibold text-amber" id="avg-pm">62</p>
+        <p class="font-mono text-[7px] text-muted">μg/m³</p>
+      </div>
+      <div class="bg-surface rounded-lg px-3 py-2 border border-border/50">
+        <p class="font-mono text-[7px] text-dim mb-1 uppercase tracking-wider">Rata-rata NTU</p>
+        <p class="font-mono text-base font-semibold text-blue" id="avg-tb">18</p>
+        <p class="font-mono text-[7px] text-muted">NTU</p>
+      </div>
+    </div>
+
+    <canvas id="trend-chart" height="120" class="w-full rounded-lg"></canvas>
+    <div class="flex justify-between mt-1.5">
+      <span class="font-mono text-[7px] text-muted">← 30 detik lalu</span>
+      <span class="font-mono text-[7px] text-muted">Sekarang →</span>
+    </div>
+  </div>
+
+</main>
+
+<!-- POPUP -->
+<div id="popup" class="popup-overlay hidden" onclick="closePopup(event)">
+  <div class="popup-box" onclick="event.stopPropagation()">
+    <div class="flex items-start justify-between mb-5">
+      <div>
+        <p class="font-mono text-[8px] text-dim tracking-widest uppercase" id="popup-tag">SENSOR</p>
+        <h2 class="text-sm font-semibold text-text mt-1" id="popup-title">Detail</h2>
+      </div>
+      <button onclick="closePopup()"
+        class="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center text-dim hover:text-text hover:border-soft transition-colors mt-1">
+        <svg width="9" height="9" viewBox="0 0 9 9"><path d="M1 1l7 7M8 1l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <div class="flex items-end gap-4 mb-5 pb-5 border-b border-border">
+      <span class="font-mono text-5xl font-semibold text-text" id="popup-val">--</span>
+      <div class="pb-1.5">
+        <p class="font-mono text-sm text-dim" id="popup-unit">ppm</p>
+        <p class="text-xs font-medium mt-1" id="popup-status-text">--</p>
+      </div>
+    </div>
+
+    <div class="mb-5">
+      <p class="font-mono text-[8px] text-dim tracking-widest uppercase mb-2">Ambang Batas</p>
+      <div id="popup-thresholds" class="space-y-1.5"></div>
+    </div>
+
+    <div class="bg-surface rounded-lg p-3 border border-border/50 mb-4">
+      <p class="font-mono text-[8px] text-dim tracking-widest uppercase mb-1.5">Keterangan Sensor</p>
+      <p class="text-[11px] text-soft leading-relaxed" id="popup-desc">—</p>
+    </div>
+
+    <button onclick="closePopup()"
+      class="w-full py-2.5 rounded-lg bg-accent/10 border border-accent/25 text-accent font-mono text-[10px] tracking-widest hover:bg-accent/20 transition-colors">
+      TUTUP
+    </button>
+  </div>
+</div>
+
+<script>
+/* ─ DATA ─ */
+let pumpOn=true, blowerOn=true;
+const MAX=30;
+let aqH=[],coH=[],pmH=[],tbH=[];
+let aqB=247,coB=38,pmB=62,tbB=18;
+for(let i=0;i<MAX;i++){
+  aqH.push(aqB+(Math.random()-.5)*60);
+  coH.push(coB+(Math.random()-.5)*12);
+  pmH.push(pmB+(Math.random()-.5)*20);
+  tbH.push(tbB+(Math.random()-.5)*6);
+}
+
+/* ─ LOG ─ */
+const logs=[];
+function addLog(msg,cls='ok'){
+  const t=new Date().toLocaleTimeString('id-ID');
+  logs.unshift({t,msg,cls});
+  if(logs.length>30) logs.pop();
+  renderLog();
+}
+function renderLog(){
+  const c={ok:'text-success',warn:'text-amber',err:'text-danger'};
+  document.getElementById('log-list').innerHTML=logs.slice(0,12).map(l=>
+    `<div class="flex gap-2">
+      <span class="font-mono text-[8px] text-muted shrink-0 mt-px">${l.t}</span>
+      <span class="font-mono text-[9px] ${c[l.cls]} leading-relaxed">${l.msg}</span>
+    </div>`).join('');
+}
+addLog('Sistem ASAP MONITOR dimulai','ok');
+addLog('Semua sensor terhubung & aktif','ok');
+addLog('Pompa-01 beroperasi, 2.4 L/min','ok');
+addLog('Blower-01 aktif, kecepatan 55%','ok');
+
+/* ─ CLOCK ─ */
+function updateClock(){
+  const now=new Date();
+  document.getElementById('clock').textContent=now.toLocaleTimeString('id-ID');
+  document.getElementById('date-display').textContent=now.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+  document.getElementById('day-display').textContent=now.toLocaleDateString('id-ID',{weekday:'long'});
+}
+updateClock(); setInterval(updateClock,1000);
+
+/* ─ SPARKLINE ─ */
+function drawSpark(id,data,color){
+  const c=document.getElementById(id);
+  if(!c) return;
+  const dpr=window.devicePixelRatio||1;
+  const W=c.offsetWidth,H=24;
+  c.width=W*dpr; c.height=H*dpr;
+  const ctx=c.getContext('2d');
+  ctx.scale(dpr,dpr);
+  const mn=Math.min(...data),mx=Math.max(...data),range=mx-mn||1;
+  ctx.clearRect(0,0,W,H);
+  ctx.beginPath();
+  data.forEach((v,i)=>{
+    const x=(i/(data.length-1))*W;
+    const y=H-((v-mn)/range)*(H-4)-2;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+  ctx.fillStyle=color+'22'; ctx.fill();
+}
+
+/* ─ TREND CHART ─ */
+let trendCtx;
+function initTrend(){
+  const c=document.getElementById('trend-chart');
+  const dpr=window.devicePixelRatio||1;
+  const W=c.offsetWidth,H=120;
+  c.width=W*dpr; c.height=H*dpr;
+  trendCtx=c.getContext('2d');
+  trendCtx.scale(dpr,dpr);
+}
+function drawTrend(){
+  if(!trendCtx) return;
+  const W=document.getElementById('trend-chart').offsetWidth,H=120;
+  trendCtx.clearRect(0,0,W,H);
+  trendCtx.strokeStyle='rgba(255,255,255,.04)'; trendCtx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){const y=(i/4)*H; trendCtx.beginPath(); trendCtx.moveTo(0,y); trendCtx.lineTo(W,y); trendCtx.stroke();}
+  [{d:aqH,c:'#00d4aa',max:600},{d:coH,c:'#8b5cf6',max:150},{d:pmH,c:'#f59e0b',max:120},{d:tbH,c:'#3b82f6',max:100}]
+  .forEach(s=>{
+    trendCtx.beginPath();
+    s.d.forEach((v,i)=>{
+      const x=(i/(s.d.length-1))*(W-12)+6;
+      const y=H-4-(Math.min(v,s.max)/s.max)*(H-12);
+      i===0?trendCtx.moveTo(x,y):trendCtx.lineTo(x,y);
+    });
+    trendCtx.strokeStyle=s.c; trendCtx.lineWidth=1.5; trendCtx.stroke();
+  });
+}
+
+/* ─ HELPERS ─ */
+function setRing(id,pct,color){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.style.strokeDashoffset=94.2*(1-Math.min(pct,1));
+  el.style.stroke=color;
+}
+function getAqSt(v){return v<200?{c:'#00d4aa',t:'BAIK'}:v<400?{c:'#f59e0b',t:'SEDANG'}:{c:'#ef4444',t:'BURUK'};}
+function getCoSt(v){return v<35?{c:'#10b981',t:'AMAN'}:v<80?{c:'#f59e0b',t:'WASPADA'}:{c:'#ef4444',t:'BAHAYA'};}
+function getPmSt(v){return v<35?{c:'#10b981',t:'BAIK'}:v<75?{c:'#f59e0b',t:'SEDANG'}:{c:'#ef4444',t:'BERBAHAYA'};}
+function getTbSt(v){return v<25?{c:'#10b981',t:'JERNIH'}:v<60?{c:'#f59e0b',t:'KERUH'}:{c:'#ef4444',t:'SANGAT KERUH'};}
+
+function setStatusRow(rowId,txtId,st){
+  const row=document.getElementById(rowId),txt=document.getElementById(txtId);
+  const dot=row.querySelector('div');
+  const cls=st.c==='#10b981'||st.c==='#00d4aa'?'bg-success':st.c==='#f59e0b'?'bg-amber':'bg-danger';
+  dot.className=`w-1.5 h-1.5 rounded-full ${cls} blink`;
+  txt.textContent=st.t; txt.style.color=st.c;
+}
+function setPill(id,isDanger,isWarn,label){
+  const el=document.getElementById(id);
+  const bg=isDanger?'border-red-500/30 bg-red-500/10':isWarn?'border-amber/30 bg-amber/10':'border-border bg-card';
+  const dc=isDanger?'bg-danger':isWarn?'bg-amber':'bg-accent';
+  const tc=isDanger?'text-danger':isWarn?'text-amber':'text-soft';
+  el.className=`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${bg}`;
+  el.innerHTML=`<div class="w-1.5 h-1.5 rounded-full ${dc} blink"></div><span class="font-mono text-[9px] ${tc} tracking-wider">${label}</span>`;
+}
+function setBar(id,pct,good,warn){
+  const el=document.getElementById(id);
+  el.style.width=Math.min(pct,100)+'%';
+  el.style.background=pct<good?'#10b981':pct<warn?'#f59e0b':'#ef4444';
+}
+
+/* ─ ALERTS ─ */
+const activeAlerts=new Set();
+function showToast(key,msg,color){
+  if(activeAlerts.has(key)) return;
+  activeAlerts.add(key);
+  const div=document.createElement('div');
+  div.id='toast-'+key;
+  div.className=`alert-toast flex items-center gap-3 px-4 py-2.5 rounded-xl border text-[11px] font-mono`;
+  div.style.cssText=`background:${color}12;border-color:${color}35;color:${color}`;
+  div.innerHTML=`<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1L1 11h10L6 1z" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/><path d="M6 5v3M6 9.5v.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>${msg}<button onclick="document.getElementById('toast-${key}').remove();activeAlerts.delete('${key}')" style="margin-left:auto;opacity:.5;font-size:11px" class="hover:opacity-100">✕</button>`;
+  document.getElementById('alert-area').appendChild(div);
+  setTimeout(()=>{ div.remove(); activeAlerts.delete(key); },9000);
+}
+function clearToast(key){ activeAlerts.delete(key); }
+
+/* ─ MAIN UPDATE ─ */
+function update(){
+  aqB=Math.max(80,Math.min(550,aqB+(Math.random()-.48)*9));
+  coB=Math.max(5,Math.min(140,coB+(Math.random()-.48)*3));
+  pmB=Math.max(10,Math.min(110,pmB+(Math.random()-.47)*5));
+  tbB=Math.max(2,Math.min(90,tbB+(Math.random()-.48)*2));
+  const aq=Math.round(aqB),co=Math.round(coB),pm=Math.round(pmB),tb=Math.round(tbB);
+
+  document.getElementById('aq-val').textContent=aq;
+  const aqSt=getAqSt(aq);
+  setBar('aq-bar',aq/600*100,33,67); setRing('ring-aq',aq/600,aqSt.c);
+  setStatusRow('aq-status-row','aq-status-text',aqSt);
+  setPill('pill-mq135',aq>400,aq>300,'MQ135'+(aq>400?' BAHAYA':aq>300?' WASPADA':' OK'));
+
+  document.getElementById('co-val').textContent=co;
+  const coSt=getCoSt(co);
+  setBar('co-bar',co/150*100,23,53); setRing('ring-co',co/150,coSt.c);
+  setStatusRow('co-status-row','co-status-text',coSt);
+  setPill('pill-mq7',co>80,co>50,'MQ7'+(co>80?' BAHAYA':co>50?' WASPADA':' OK'));
+
+  document.getElementById('pm-val').textContent=pm;
+  const pmSt=getPmSt(pm);
+  setBar('pm-bar',pm/120*100,29,62); setRing('ring-pm',pm/120,pmSt.c);
+  setStatusRow('pm-status-row','pm-status-text',pmSt);
+  setPill('pill-dsm',pm>75,pm>55,'DSM501A'+(pm>75?' BAHAYA':pm>55?' WASPADA':' OK'));
+
+  document.getElementById('tb-val').textContent=tb;
+  const tbSt=getTbSt(tb);
+  setBar('tb-bar',tb/100*100,25,60); setRing('ring-tb',tb/100,tbSt.c);
+  setStatusRow('tb-status-row','tb-status-text',tbSt);
+  setPill('pill-turb',tb>60,tb>40,'TURBIDITY'+(tb>60?' BURUK':tb>40?' KERUH':' OK'));
+
+  aqH.push(aq); if(aqH.length>MAX) aqH.shift();
+  coH.push(co); if(coH.length>MAX) coH.shift();
+  pmH.push(pm); if(pmH.length>MAX) pmH.shift();
+  tbH.push(tb); if(tbH.length>MAX) tbH.shift();
+
+  const avg=a=>Math.round(a.reduce((x,y)=>x+y,0)/a.length);
+  document.getElementById('avg-aq').textContent=avg(aqH);
+  document.getElementById('avg-co').textContent=avg(coH);
+  document.getElementById('avg-pm').textContent=avg(pmH);
+  document.getElementById('avg-tb').textContent=avg(tbH);
+
+  if(pumpOn){
+    const load=Math.round(58+Math.random()*24);
+    document.getElementById('pump-pct').textContent=load;
+    document.getElementById('pump-load-txt').textContent=load;
+    document.getElementById('pump-bar').style.width=load+'%';
+    document.getElementById('pump-ring').style.strokeDashoffset=150.8*(1-load/100);
+  }
+  if(blowerOn){
+    const rpm=Math.round(1350+Math.random()*550);
+    const spd=Math.round(42+Math.random()*35);
+    document.getElementById('blower-rpm').textContent=rpm;
+    document.getElementById('blower-spd').textContent=spd;
+    document.getElementById('blower-bar').style.width=spd+'%';
+    const bl=document.getElementById('fan-blades');
+    if(bl) bl.style.setProperty('--fan-speed',(2.2-spd/100*1.5)+'s');
+  }
+
+  drawSpark('spark-aq',aqH,'#00d4aa');
+  drawSpark('spark-co',coH,'#8b5cf6');
+  drawSpark('spark-pm',pmH,'#f59e0b');
+  drawSpark('spark-tb',tbH,'#3b82f6');
+  drawTrend();
+
+  if(co>80) showToast('co',`⚠ CO tinggi: ${co} ppm — bahaya kesehatan!`,'#ef4444');
+  else clearToast('co');
+  if(pm>75) showToast('pm',`⚠ PM2.5: ${pm} μg/m³ — udara berbahaya`,'#f59e0b');
+  else clearToast('pm');
+  if(tb>60) showToast('tb',`⚠ Air keruh: ${tb} NTU — periksa filter`,'#3b82f6');
+  else clearToast('tb');
+
+  if(Math.random()<0.1){
+    if(pm>75) addLog(`PM2.5 ${pm}μg/m³ — blower ditingkatkan`,'warn');
+    else if(co>80) addLog(`CO ${co}ppm — periksa ventilasi`,'err');
+    else if(tb>60) addLog(`Turbidity ${tb}NTU — air keruh`,'warn');
+    else addLog(`Semua sensor normal`,'ok');
+  }
+}
+
+/* ─ TOGGLES ─ */
+function togglePump(){
+  pumpOn=!pumpOn;
+  const btn=document.getElementById('pump-toggle-btn');
+  const knob=document.getElementById('pump-knob');
+  btn.className=`toggle-btn ${pumpOn?'on':'off'} w-12 h-6 rounded-full relative cursor-pointer`;
+  knob.className=`toggle-knob ${pumpOn?'on':'off'} absolute top-0.5 w-5 h-5 bg-white rounded-full shadow`;
+  document.getElementById('pump-lbl').textContent=pumpOn?'ON':'OFF';
+  document.getElementById('pump-state-text').textContent=pumpOn?'Pompa Aktif':'Pompa Mati';
+  document.getElementById('pump-meta').textContent=pumpOn?'Debit: 2.4 L/min · Tekanan: 1.2 bar':'Standby — tidak ada aliran';
+  if(!pumpOn){
+    document.getElementById('pump-pct').textContent='0';
+    document.getElementById('pump-load-txt').textContent='0';
+    document.getElementById('pump-bar').style.width='0%';
+    document.getElementById('pump-ring').style.strokeDashoffset='150.8';
+  }
+  const st=document.getElementById('pump-status-txt');
+  st.textContent=pumpOn?'BEROPERASI':'STANDBY';
+  st.style.color=pumpOn?'#10b981':'#6b7280';
+  addLog(pumpOn?'Pompa-01 diaktifkan':'Pompa-01 dimatikan',pumpOn?'ok':'warn');
+}
+
+function toggleBlower(){
+  blowerOn=!blowerOn;
+  const btn=document.getElementById('blower-toggle-btn');
+  const knob=document.getElementById('blower-knob');
+  btn.className=`toggle-btn ${blowerOn?'on':'off'} w-12 h-6 rounded-full relative cursor-pointer`;
+  knob.className=`toggle-knob ${blowerOn?'on':'off'} absolute top-0.5 w-5 h-5 bg-white rounded-full shadow`;
+  document.getElementById('blower-lbl').textContent=blowerOn?'ON':'OFF';
+  document.getElementById('blower-state-text').textContent=blowerOn?'Blower Aktif':'Blower Mati';
+  document.getElementById('blower-meta').textContent=blowerOn?'Mode: Auto · Suhu: 34°C':'Standby';
+  const bl=document.getElementById('fan-blades');
+  if(bl) blowerOn?bl.classList.remove('fan-paused'):bl.classList.add('fan-paused');
+  if(!blowerOn){
+    document.getElementById('blower-rpm').textContent='0';
+    document.getElementById('blower-spd').textContent='0';
+    document.getElementById('blower-bar').style.width='0%';
+  }
+  const st=document.getElementById('blower-status-txt');
+  st.textContent=blowerOn?'BERPUTAR':'STANDBY';
+  st.style.color=blowerOn?'#f97316':'#6b7280';
+  addLog(blowerOn?'Blower-01 diaktifkan':'Blower-01 dimatikan',blowerOn?'ok':'warn');
+}
+
+/* ─ POPUP ─ */
+const PD={
+  mq135:{tag:'SENSOR · MQ135',title:'Kualitas Udara',getVal:()=>Math.round(aqB),unit:'ppm NH₃/CO₂/Benzene',
+    getSt:()=>getAqSt(Math.round(aqB)),
+    th:[{l:'Baik',r:'0 – 200 ppm',c:'#10b981'},{l:'Sedang',r:'200 – 400 ppm',c:'#f59e0b'},{l:'Buruk',r:'> 400 ppm',c:'#ef4444'}],
+    desc:'Sensor MQ135 mendeteksi berbagai gas berbahaya di udara seperti NH₃, NOₓ, alkohol, benzena, asap, dan CO₂. Digunakan untuk memantau kualitas udara umum di area kerja sprayer.'},
+  mq7:{tag:'SENSOR · MQ7',title:'Kadar Karbon Monoksida (CO)',getVal:()=>Math.round(coB),unit:'ppm CO',
+    getSt:()=>getCoSt(Math.round(coB)),
+    th:[{l:'Aman',r:'0 – 35 ppm',c:'#10b981'},{l:'Waspada',r:'35 – 80 ppm',c:'#f59e0b'},{l:'Bahaya',r:'> 80 ppm',c:'#ef4444'}],
+    desc:'Sensor MQ7 khusus mendeteksi gas karbon monoksida (CO). CO adalah gas beracun tidak berwarna & tidak berbau, berbahaya jika terhirup dalam konsentrasi tinggi dalam waktu singkat.'},
+  dsm:{tag:'SENSOR · DSM501A',title:'Partikel Udara PM2.5',getVal:()=>Math.round(pmB),unit:'μg/m³',
+    getSt:()=>getPmSt(Math.round(pmB)),
+    th:[{l:'Baik (WHO)',r:'0 – 35 μg/m³',c:'#10b981'},{l:'Sedang',r:'35 – 75 μg/m³',c:'#f59e0b'},{l:'Berbahaya',r:'> 75 μg/m³',c:'#ef4444'}],
+    desc:'DSM501A mendeteksi partikel PM2.5 (diameter < 2.5μm) via hamburan cahaya. Partikel ini masuk ke saluran napas dalam dan dapat sebabkan gangguan pernapasan jika terpapar lama.'},
+  turb:{tag:'SENSOR · TURBIDITY',title:'Kekeruhan Air Bak Sprayer',getVal:()=>Math.round(tbB),unit:'NTU',
+    getSt:()=>getTbSt(Math.round(tbB)),
+    th:[{l:'Jernih',r:'0 – 25 NTU',c:'#10b981'},{l:'Keruh',r:'25 – 60 NTU',c:'#f59e0b'},{l:'Sangat Keruh',r:'> 60 NTU',c:'#ef4444'}],
+    desc:'Sensor turbidity mengukur kekeruhan air bak penampung sprayer. Nilai NTU tinggi menandakan banyak partikel tersuspensi — air perlu diganti atau difilter sebelum digunakan.'},
+  pump:{tag:'PERANGKAT · PUMP-01',title:'Pompa Air Sprayer',getVal:()=>pumpOn?Math.round(58+Math.random()*24):0,unit:'% beban',
+    getSt:()=>pumpOn?{c:'#10b981',t:'BEROPERASI'}:{c:'#6b7280',t:'STANDBY'},
+    th:[{l:'Normal',r:'40 – 80% beban',c:'#10b981'},{l:'Tinggi',r:'80 – 90% beban',c:'#f59e0b'},{l:'Overload',r:'> 90% beban',c:'#ef4444'}],
+    desc:'Pompa mengalirkan air dari bak penampung ke sistem sprayer. Pantau beban secara rutin. Debit normal 2.4 L/min pada tekanan 1.2 bar. Matikan pompa saat tidak digunakan untuk menghemat daya.'},
+  blower:{tag:'PERANGKAT · BLOWER-01',title:'Blower / Kipas Sirkulasi',getVal:()=>blowerOn?Math.round(1350+Math.random()*550):0,unit:'RPM',
+    getSt:()=>blowerOn?{c:'#f97316',t:'BERPUTAR'}:{c:'#6b7280',t:'STANDBY'},
+    th:[{l:'Rendah',r:'< 1000 RPM',c:'#3b82f6'},{l:'Normal',r:'1000 – 2000 RPM',c:'#10b981'},{l:'Tinggi',r:'> 2000 RPM',c:'#f59e0b'}],
+    desc:'Blower mensirkulasikan udara agar sensor mendapat pembacaan yang representatif. Kecepatan disesuaikan otomatis berdasarkan PM2.5. Suhu tinggi dapat memperpendek umur motor blower.'},
+};
+
+function openPopup(key){
+  const d=PD[key]; if(!d) return;
+  const val=d.getVal(), st=d.getSt();
+  document.getElementById('popup-tag').textContent=d.tag;
+  document.getElementById('popup-title').textContent=d.title;
+  document.getElementById('popup-val').textContent=val;
+  document.getElementById('popup-unit').textContent=d.unit;
+  const stEl=document.getElementById('popup-status-text');
+  stEl.textContent=st.t; stEl.style.color=st.c;
+  document.getElementById('popup-thresholds').innerHTML=d.th.map(th=>
+    `<div class="flex items-center justify-between px-3 py-2 rounded-lg" style="background:${th.c}10;border:1px solid ${th.c}28">
+      <span class="text-[10px] font-semibold" style="color:${th.c}">${th.l}</span>
+      <span class="font-mono text-[9px]" style="color:${th.c}99">${th.r}</span>
+    </div>`).join('');
+  document.getElementById('popup-desc').textContent=d.desc;
+  document.getElementById('popup').classList.remove('hidden');
+}
+function closePopup(e){
+  if(!e||e.target===document.getElementById('popup'))
+    document.getElementById('popup').classList.add('hidden');
+}
+
+/* ─ BOOT ─ */
+window.addEventListener('load',()=>{
+  initTrend(); update();
+  setInterval(update,2000);
+  window.addEventListener('resize',()=>{ initTrend(); drawTrend(); });
+});
+</script>
+</body>
+</html>
