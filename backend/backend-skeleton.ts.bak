@@ -1,0 +1,287 @@
+// ============================================
+// BACKEND SKELETON - Node.js + Express + Socket.io
+// ============================================
+
+// server.ts
+import express, { Express, Request, Response } from 'express';
+import { Server } from 'socket.io';
+import { createServer } from 'http';
+import pg from 'pg';
+import redis from 'redis';
+import cors from 'cors';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const app: Express = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000' }
+});
+
+// Middleware
+app.use(express.json());
+app.use(cors());
+
+// Database setup
+const pgClient = new pg.Client({
+  connectionString: process.env.DATABASE_URL
+});
+
+const redisClient = redis.createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379'
+});
+
+pgClient.connect();
+redisClient.connect();
+
+// ============================================
+// REST API ROUTES
+// ============================================
+
+// Devices
+app.get('/api/devices', async (req: Request, res: Response) => {
+  try {
+    const result = await pgClient.query('SELECT * FROM devices');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/devices', async (req: Request, res: Response) => {
+  const { id, name, type, ip_address } = req.body;
+  try {
+    const result = await pgClient.query(
+      'INSERT INTO devices (id, name, type, ip_address) VALUES ($1, $2, $3, $4) RETURNING *',
+      [id, name, type, ip_address]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/devices/:id/heartbeat', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await pgClient.query(
+      'UPDATE devices SET last_heartbeat = NOW(), status = $1 WHERE id = $2',
+      ['ONLINE', id]
+    );
+    // Update Redis cache
+    await redisClient.setEx(`device:${id}:status`, 300, 'ONLINE'); // 5 min TTL
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Sensor data
+app.post('/api/sensors/:device_id', async (req: Request, res: Response) => {
+  const { device_id } = req.params;
+  const { readings } = req.body; // [{type: "TDS", value: 250, unit: "ppm"}, ...]
+
+  try {
+    for (const reading of readings) {
+      await pgClient.query(
+        'INSERT INTO sensor_readings (device_id, sensor_type, sensor_value, unit) VALUES ($1, $2, $3, $4)',
+        [device_id, reading.type, reading.value, reading.unit]
+      );
+
+      // Broadcast to dashboard via WebSocket
+      io.emit('sensor_update', {
+        device_id,
+        sensor_type: reading.type,
+        value: reading.value,
+        unit: reading.unit,
+        timestamp: new Date().toISOString()
+      });
+
+      // Check for alerts
+      await checkAlerts(device_id, reading.type, reading.value);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/sensors/:device_id/history', async (req: Request, res: Response) => {
+  const { device_id } = req.params;
+  const { sensor, limit = 100, hours = 24 } = req.query;
+
+  try {
+    const result = await pgClient.query(
+      `SELECT * FROM sensor_readings 
+       WHERE device_id = $1 AND sensor_type = $2 
+       AND timestamp > NOW() - INTERVAL '${hours} hours'
+       ORDER BY timestamp DESC LIMIT ${limit}`,
+      [device_id, sensor]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Commands
+app.post('/api/commands/:device_id', async (req: Request, res: Response) => {
+  const { device_id } = req.params;
+  const { command, payload } = req.body;
+
+  try {
+    const result = await pgClient.query(
+      'INSERT INTO command_queue (device_id, command, payload) VALUES ($1, $2, $3) RETURNING *',
+      [device_id, command, JSON.stringify(payload || {})]
+    );
+
+    // Send command via WebSocket to ESP32
+    const esp32Socket = io.sockets.sockets.get(device_id);
+    if (esp32Socket) {
+      esp32Socket.emit('command', {
+        id: result.rows[0].id,
+        command,
+        payload
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/commands/:command_id/ack', async (req: Request, res: Response) => {
+  const { command_id } = req.params;
+
+  try {
+    await pgClient.query(
+      'UPDATE command_queue SET status = $1, executed_at = NOW() WHERE id = $2',
+      ['ACK', command_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ============================================
+// WebSocket EVENT HANDLERS
+// ============================================
+
+io.on('connection', (socket) => {
+  const deviceId = socket.handshake.query.device_id as string;
+
+  if (deviceId) {
+    // Device (ESP32) connecting
+    console.log(`✅ Device ${deviceId} connected`);
+    socket.join(`device:${deviceId}`);
+
+    // Mark as online
+    pgClient.query(
+      'UPDATE devices SET status = $1, last_heartbeat = NOW() WHERE id = $2',
+      ['ONLINE', deviceId]
+    );
+
+    // Notify dashboard
+    io.emit('device_heartbeat', { device_id: deviceId, status: 'ONLINE' });
+
+    // Listen for sensor data from ESP32
+    socket.on('sensor_data', async (data) => {
+      // Already handled by POST endpoint, but can also come via WebSocket
+      console.log(`📡 Sensor data from ${deviceId}:`, data);
+    });
+
+    // Listen for status updates
+    socket.on('status_update', async (data) => {
+      // data = { pump: {status: "ON", load: 68}, blower: {...} }
+      for (const [component, status] of Object.entries(data)) {
+        await pgClient.query(
+          'INSERT INTO device_status (device_id, component, status, load_percentage) VALUES ($1, $2, $3, $4) ON CONFLICT (device_id, component) DO UPDATE SET status = $3',
+          [deviceId, component.toUpperCase(), status.status, status.load || null]
+        );
+      }
+
+      io.emit('device_status', { device_id: deviceId, ...data });
+    });
+
+    // Heartbeat from ESP32
+    socket.on('heartbeat', () => {
+      pgClient.query(
+        'UPDATE devices SET last_heartbeat = NOW() WHERE id = $1',
+        [deviceId]
+      );
+    });
+
+    // Disconnect
+    socket.on('disconnect', () => {
+      console.log(`❌ Device ${deviceId} disconnected`);
+      pgClient.query(
+        'UPDATE devices SET status = $1 WHERE id = $2',
+        ['OFFLINE', deviceId]
+      );
+      io.emit('device_heartbeat', { device_id: deviceId, status: 'OFFLINE' });
+    });
+  } else {
+    // Dashboard client connecting
+    console.log(`🖥️ Dashboard client connected: ${socket.id}`);
+
+    // Listen for control commands from dashboard
+    socket.on('control_device', async (data) => {
+      const { device_id, command, payload } = data;
+      console.log(`🎮 Control command: ${device_id} -> ${command}`);
+
+      // Create command in queue
+      const result = await pgClient.query(
+        'INSERT INTO command_queue (device_id, command, payload) VALUES ($1, $2, $3) RETURNING *',
+        [device_id, command, JSON.stringify(payload || {})]
+      );
+
+      // Send to device
+      io.to(`device:${device_id}`).emit('command', {
+        id: result.rows[0].id,
+        command,
+        payload
+      });
+    });
+  }
+});
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+async function checkAlerts(deviceId: string, sensorType: string, value: number) {
+  const thresholds: Record<string, number> = {
+    'TDS': 500,
+    'TURBIDITY': 60
+  };
+
+  const threshold = thresholds[sensorType];
+  if (threshold && value > threshold) {
+    const result = await pgClient.query(
+      'INSERT INTO alerts (device_id, alert_type, severity, message) VALUES ($1, $2, $3, $4) RETURNING *',
+      [
+        deviceId,
+        `HIGH_${sensorType}`,
+        'CRITICAL',
+        `${sensorType} melebihi ambang batas: ${value}`
+      ]
+    );
+
+    // Broadcast alert
+    io.emit('alert', result.rows[0]);
+  }
+}
+
+// ============================================
+// START SERVER
+// ============================================
+
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 WebSocket ready`);
+});

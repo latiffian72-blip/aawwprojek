@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: asap_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: asap_monitor
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/database-schema.sql:/docker-entrypoint-initdb.d/init.sql
+
+  redis:
+    image: redis:alpine
+    container_name: asap_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+    container_name: asap_backend
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      # URL otomatis menyambung ke nama container 'db' dan 'redis'
+      - DATABASE_URL=postgresql://user:password@db:5432/asap_monitor
+      - REDIS_URL=redis://redis:6379
+      - PORT=3001
+      - FRONTEND_URL=http://localhost:3000
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: asap_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      # Backend akan bisa diakses dari browser pengguna, jadi pakai localhost
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
