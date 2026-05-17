@@ -23,6 +23,9 @@ const char* DEVICE_NAME = "Water Monitor Tank-01";
 // Pins
 const int TDS_PIN = 34;
 const int TURBIDITY_PIN = 35;
+const int MQ135_PIN = 32;
+const int MQ7_PIN = 33;
+const int DSM501A_PIN = 14;
 const int PUMP_PIN = 12;
 const int BLOWER_PIN = 13;
 
@@ -34,6 +37,9 @@ WebSocketsClient webSocket;
 
 volatile float tdsValue = 0.0;
 volatile float turbidityValue = 0.0;
+volatile float mq135Value = 0.0;
+volatile float mq7Value = 0.0;
+volatile float dustValue = 0.0;
 volatile bool pumpOn = true;
 volatile bool blowerOn = true;
 volatile int blowerSpeed = 55;
@@ -58,6 +64,7 @@ void setup() {
   // Initialize pins
   pinMode(PUMP_PIN, OUTPUT);
   pinMode(BLOWER_PIN, OUTPUT);
+  pinMode(DSM501A_PIN, INPUT);
   digitalWrite(PUMP_PIN, HIGH);  // Turn on initially
   digitalWrite(BLOWER_PIN, HIGH);
 
@@ -220,8 +227,21 @@ void readSensors() {
   float turbidity = (turbidityRaw / 4095.0) * 100.0;
   turbidityValue = turbidity;
 
+  // Read MQ135 (Air Quality)
+  int mq135Raw = analogRead(MQ135_PIN);
+  mq135Value = (mq135Raw / 4095.0) * 100.0; // Simulated calculation
+
+  // Read MQ7 (CO Gas)
+  int mq7Raw = analogRead(MQ7_PIN);
+  mq7Value = (mq7Raw / 4095.0) * 50.0; // Simulated calculation
+
+  // Read DSM501A (Dust/PM2.5) - Simplified pulse reading
+  unsigned long duration = pulseIn(DSM501A_PIN, LOW, 1000000); // 1 sec timeout
+  float ratio = duration / 10000.0; // simplified ratio
+  dustValue = ratio > 0 ? (1.1 * pow(ratio, 3) - 3.8 * pow(ratio, 2) + 520 * ratio + 0.62) : 0;
+
   // Print to Serial
-  Serial.printf("📥 TDS: %.2f ppm | Turbidity: %.2f NTU\n", tds, turbidity);
+  Serial.printf("📥 TDS: %.2f | Turb: %.2f | MQ135: %.2f | MQ7: %.2f | Dust: %.2f\n", tds, turbidity, mq135Value, mq7Value, dustValue);
 
   // Send sensor data via WebSocket
   if (webSocket.isConnected()) {
@@ -230,7 +250,7 @@ void readSensors() {
 }
 
 void sendSensorData() {
-  DynamicJsonDocument doc(256);
+  DynamicJsonDocument doc(512);
   doc["type"] = "sensor_data";
   doc["device_id"] = DEVICE_ID;
   
@@ -245,6 +265,21 @@ void sendSensorData() {
   turbidityReading["type"] = "TURBIDITY";
   turbidityReading["value"] = turbidityValue;
   turbidityReading["unit"] = "NTU";
+
+  JsonObject mq135Reading = readings.createNestedObject();
+  mq135Reading["type"] = "MQ135";
+  mq135Reading["value"] = mq135Value;
+  mq135Reading["unit"] = "ppm";
+
+  JsonObject mq7Reading = readings.createNestedObject();
+  mq7Reading["type"] = "MQ7";
+  mq7Reading["value"] = mq7Value;
+  mq7Reading["unit"] = "ppm";
+
+  JsonObject dustReading = readings.createNestedObject();
+  dustReading["type"] = "DSM501A";
+  dustReading["value"] = dustValue;
+  dustReading["unit"] = "ug/m3";
 
   String json;
   serializeJson(doc, json);

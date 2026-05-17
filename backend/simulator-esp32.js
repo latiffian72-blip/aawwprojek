@@ -20,19 +20,25 @@ socket.on("connect", () => {
   setInterval(() => {
     const tds = (200 + Math.random() * 50).toFixed(2);
     const turbidity = (20 + Math.random() * 10).toFixed(2);
+    const mq135 = (15 + Math.random() * 10).toFixed(2);
+    const mq7 = (5 + Math.random() * 2).toFixed(2);
+    const dust = (0.05 + Math.random() * 0.02).toFixed(3);
 
     const fakeData = {
       device_id: "esp32_01",
       readings: [
         { type: "TDS", value: parseFloat(tds), unit: "ppm" },
         { type: "TURBIDITY", value: parseFloat(turbidity), unit: "NTU" },
+        { type: "MQ135", value: parseFloat(mq135), unit: "ppm" },
+        { type: "MQ7", value: parseFloat(mq7), unit: "ppm" },
+        { type: "DSM501A", value: parseFloat(dust), unit: "ug/m3" },
       ],
     };
 
     socket.emit("sensor_data", fakeData);
 
     process.stdout.write(
-      `\r📤 Mengirim data: TDS = ${tds} ppm | Turbidity = ${turbidity} NTU   `,
+      `\r📤 TDS:${tds} Turb:${turbidity} MQ135:${mq135} MQ7:${mq7} Dust:${dust}   `,
     );
   }, 1000);
 
@@ -45,7 +51,6 @@ socket.on("connect", () => {
   }, 5000);
 });
 
-// 3. Mendengarkan perintah kendali (misal klik tombol dari Website)
 socket.on("command", (pesan) => {
   console.log(`\n\n🎮 MENDAPAT PERINTAH DARI WEBSITE: [${pesan.command}]`);
 

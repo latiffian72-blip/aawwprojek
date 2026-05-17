@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { 
+    @apply bg-bg font-sans text-text overflow-x-hidden; 
+  }
+  ::-webkit-scrollbar { width:5px; }
+  ::-webkit-scrollbar-track { background:#0d1424; }
+  ::-webkit-scrollbar-thumb { background:#1a2840; border-radius:4px; }
+}
+
+@layer components {
+  .sidebar { background:linear-gradient(180deg,#0d1424 0%,#080d1a 100%); border-right:1px solid #1a2840; }
+  
+  .card-accent { position:relative; }
+  .card-accent::before { content:''; position:absolute; top:0;left:0;right:0; height:1px; border-radius:12px 12px 0 0; }
+  .card-teal::before   { background:linear-gradient(90deg,#00d4aa,transparent); }
+  .card-purple::before { background:linear-gradient(90deg,#8b5cf6,transparent); }
+  .card-amber::before  { background:linear-gradient(90deg,#f59e0b,transparent); }
+  .card-blue::before   { background:linear-gradient(90deg,#3b82f6,transparent); }
+  .card-green::before  { background:linear-gradient(90deg,#10b981,transparent); }
+  .card-orange::before { background:linear-gradient(90deg,#f97316,transparent); }
+  
+  .gauge-ring { transform:rotate(-90deg); transform-origin:center; }
+  .gauge-ring circle { transition:stroke-dashoffset 1s ease, stroke 0.5s; }
+  
+  .toggle-btn { transition:all 0.3s ease; }
+  .toggle-btn.on  { background:#10b981; box-shadow:0 0 12px rgba(16,185,129,0.4); }
+  .toggle-btn.off { background:#374151; box-shadow:none; }
+  
+  .toggle-knob { transition:transform 0.3s ease; }
+  .toggle-knob.on  { transform:translateX(22px); }
+  .toggle-knob.off { transform:translateX(2px); }
+  
+  .bar-fill { transition:width 0.8s ease, background-color 0.5s; }
+  .sensor-card { transition:border-color 0.3s, transform 0.2s; cursor:pointer; }
+  .sensor-card:hover { transform:translateY(-2px); }
+  .sensor-card.teal:hover  { border-color:#00d4aa44; }
+  .sensor-card.purple:hover{ border-color:#8b5cf644; }
+  .sensor-card.amber:hover { border-color:#f59e0b44; }
+  .sensor-card.blue:hover  { border-color:#3b82f644; }
+}
+
+@layer utilities {
+  .blink { animation:blink 1.5s ease-in-out infinite; }
+  .fan-spin { animation:spinFan var(--fan-speed,1.5s) linear infinite; transform-origin:32px 32px; }
+  .fan-paused { animation-play-state:paused; }
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+@keyframes spinFan { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
