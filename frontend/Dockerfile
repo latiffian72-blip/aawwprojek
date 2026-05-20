@@ -1,30 +1,37 @@
-# Template standar untuk Next.js (Multi-stage build)
 
-# Tahap 1: Install Dependencies
+# Stage 1 - Dependencies
 FROM node:18-alpine AS deps
+
 WORKDIR /app
+
 COPY package*.json ./
-RUN (npm ci || npm install || echo "Melewati install karena package.json belum lengkap") && mkdir -p /app/node_modules
 
-# Tahap 2: Builder (Jika Anda sudah siap ke tahap produksi, uncomment baris-baris ini)
-# FROM node:18-alpine AS builder
-# WORKDIR /app
-# COPY --from=deps /app/node_modules ./node_modules
-# COPY . .
-# RUN npm run build
+RUN npm install
 
-# Tahap 3: Runner (Sistem yang akan berjalan)
-FROM node:18-alpine AS runner
+# Stage 2 - Build
+FROM node:18-alpine AS builder
+
 WORKDIR /app
 
-ENV NODE_ENV development
-# Jika produksi: ENV NODE_ENV production
-ENV PORT 3000
-
-# Untuk sementara kita jalankan dalam mode dev karena Next.js belum ada
-# Nanti jika sudah di-build, gunakan node server.js (standalone)
 COPY --from=deps /app/node_modules ./node_modules
+
 COPY . .
+
+RUN npm run build
+
+# Stage 3 - Production Runner
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+ENV PORT=3000
+
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3000
 
