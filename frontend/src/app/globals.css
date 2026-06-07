@@ -2,52 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @layer base {
   body { 
     @apply bg-bg font-sans text-text overflow-x-hidden; 
   }
-  ::-webkit-scrollbar { width:5px; }
-  ::-webkit-scrollbar-track { background:#0d1424; }
-  ::-webkit-scrollbar-thumb { background:#1a2840; border-radius:4px; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: #F0F2F8; }
+  ::-webkit-scrollbar-thumb { background: #C8D0E0; border-radius: 4px; }
 }
 
 @layer components {
-  .sidebar { background:linear-gradient(180deg,#0d1424 0%,#080d1a 100%); border-right:1px solid #1a2840; }
+  .sidebar { 
+    background: #F0F2F8;
+    border-right: 1px solid #E2E6F0;
+  }
   
-  .card-accent { position:relative; }
-  .card-accent::before { content:''; position:absolute; top:0;left:0;right:0; height:1px; border-radius:12px 12px 0 0; }
-  .card-teal::before   { background:linear-gradient(90deg,#00d4aa,transparent); }
-  .card-purple::before { background:linear-gradient(90deg,#8b5cf6,transparent); }
-  .card-amber::before  { background:linear-gradient(90deg,#f59e0b,transparent); }
-  .card-blue::before   { background:linear-gradient(90deg,#3b82f6,transparent); }
-  .card-green::before  { background:linear-gradient(90deg,#10b981,transparent); }
-  .card-orange::before { background:linear-gradient(90deg,#f97316,transparent); }
+  .card-accent { position: relative; }
+  .card-accent::before { 
+    content: ''; 
+    position: absolute; 
+    top: 0; left: 0; right: 0; 
+    height: 2px; 
+    border-radius: 16px 16px 0 0; 
+  }
+  .card-teal::before   { background: linear-gradient(90deg, #14B8A6, transparent); }
+  .card-purple::before { background: linear-gradient(90deg, #8B5CF6, transparent); }
+  .card-amber::before  { background: linear-gradient(90deg, #F59E0B, transparent); }
+  .card-blue::before   { background: linear-gradient(90deg, #0EA5E9, transparent); }
+  .card-green::before  { background: linear-gradient(90deg, #10B981, transparent); }
+  .card-orange::before { background: linear-gradient(90deg, #F97316, transparent); }
   
-  .gauge-ring { transform:rotate(-90deg); transform-origin:center; }
-  .gauge-ring circle { transition:stroke-dashoffset 1s ease, stroke 0.5s; }
+  .gauge-ring { transform: rotate(-90deg); transform-origin: center; }
+  .gauge-ring circle { transition: stroke-dashoffset 1s ease, stroke 0.5s; }
   
-  .toggle-btn { transition:all 0.3s ease; }
-  .toggle-btn.on  { background:#10b981; box-shadow:0 0 12px rgba(16,185,129,0.4); }
-  .toggle-btn.off { background:#374151; box-shadow:none; }
+  .toggle-btn { transition: all 0.3s ease; }
+  .toggle-btn.on  { background: #10B981; box-shadow: 0 0 12px rgba(16,185,129,0.25); }
+  .toggle-btn.off { background: #D1D5DB; box-shadow: none; }
   
-  .toggle-knob { transition:transform 0.3s ease; }
-  .toggle-knob.on  { transform:translateX(22px); }
-  .toggle-knob.off { transform:translateX(2px); }
+  .toggle-knob { transition: transform 0.3s ease; }
+  .toggle-knob.on  { transform: translateX(22px); }
+  .toggle-knob.off { transform: translateX(2px); }
   
-  .bar-fill { transition:width 0.8s ease, background-color 0.5s; }
-  .sensor-card { transition:border-color 0.3s, transform 0.2s; cursor:pointer; }
-  .sensor-card:hover { transform:translateY(-2px); }
-  .sensor-card.teal:hover  { border-color:#00d4aa44; }
-  .sensor-card.purple:hover{ border-color:#8b5cf644; }
-  .sensor-card.amber:hover { border-color:#f59e0b44; }
-  .sensor-card.blue:hover  { border-color:#3b82f644; }
+  .bar-fill { transition: width 0.8s ease, background-color 0.5s; }
+  .sensor-card { 
+    transition: border-color 0.3s, transform 0.2s, box-shadow 0.2s; 
+    cursor: pointer; 
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  .sensor-card:hover { 
+    transform: translateY(-2px); 
+    box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  }
+  .sensor-card.teal:hover   { border-color: #14B8A640; }
+  .sensor-card.purple:hover { border-color: #8B5CF640; }
+  .sensor-card.amber:hover  { border-color: #F59E0B40; }
+  .sensor-card.blue:hover   { border-color: #0EA5E940; }
 }
 
 @layer utilities {
-  .blink { animation:blink 1.5s ease-in-out infinite; }
-  .fan-spin { animation:spinFan var(--fan-speed,1.5s) linear infinite; transform-origin:32px 32px; }
-  .fan-paused { animation-play-state:paused; }
+  .blink { animation: blink 1.5s ease-in-out infinite; }
+  .fan-spin { animation: spinFan var(--fan-speed, 1.5s) linear infinite; transform-origin: 32px 32px; }
+  .fan-paused { animation-play-state: paused; }
 }
 
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
-@keyframes spinFan { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: 0.2 } }
+@keyframes spinFan { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }

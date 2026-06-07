@@ -1,16 +1,11 @@
-// ============================================
-// ESP32 FIRMWARE SKELETON - Arduino
-// ============================================
-
-// asap_monitor_esp32.ino
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
-// ============================================
-// CONFIGURATION
-// ============================================
-
+// ─── CONFIGURATION & DEVICE ID ────────────────────────────────
 const char* SSID = "UDINUS I.4";
 const char* PASSWORD = "";
 
@@ -18,278 +13,268 @@ const char* SOCKET_SERVER = "192.168.1.100";  // Backend IP
 const uint16_t SOCKET_PORT = 3001;
 
 const char* DEVICE_ID = "esp32_01";
-const char* DEVICE_NAME = "Water Monitor Tank-01";
-
-// Pins
-const int TDS_PIN = 34;
-const int TURBIDITY_PIN = 35;
-const int MQ135_PIN = 32;
-const int MQ7_PIN = 33;
-const int DSM501A_PIN = 14;
-const int PUMP_PIN = 12;
-const int BLOWER_PIN = 13;
-
-// ============================================
-// GLOBAL VARIABLES
-// ============================================
+const char* DEVICE_NAME = "ASAP Monitor Tank-01";
 
 WebSocketsClient webSocket;
 
-volatile float tdsValue = 0.0;
-volatile float turbidityValue = 0.0;
-volatile float mq135Value = 0.0;
-volatile float mq7Value = 0.0;
-volatile float dustValue = 0.0;
-volatile bool pumpOn = true;
-volatile bool blowerOn = true;
-volatile int blowerSpeed = 55;
+// ─── OLED ────────────────────────────────────────────────────
+#define SCREEN_WIDTH  128
+#define SCREEN_HEIGHT  64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-unsigned long lastSensorRead = 0;
+// ─── TURBIDITY ───────────────────────────────────────────────
+#define TURBIDITY_PIN 32         
+const int TURB_SAMPLES = 20;
+
+unsigned long lastTurbUpdate = 0;
+const unsigned long TURB_INTERVAL = 1000UL;
+
+int    turbAdc     = 0;
+float  turbVoltage = 0;
+String turbKondisi = "---";
+
+// ─── DSM501A ─────────────────────────────────────────────────
+#define DUST_PIN 27
+const unsigned long DSM_SAMPLE_MS = 30000UL;
+
+unsigned long dsmStartTime      = 0;
+unsigned long lowpulseoccupancy = 0;
+
+float  dsmRatio         = 0;
+float  dsmConcentration = 0;
+String dsmStatus        = "---";
+
+// ─── MQ-7 ────────────────────────────────────────────────────
+#define MQ7_PIN 35
+float RL = 10.0;
+float Ro = 1.73;
+
+unsigned long lastMQ7Update = 0;
+const unsigned long MQ7_INTERVAL = 2000UL;
+
+float  mq7ppm    = 0;
+String mq7Status = "---";
+
+// ─── PWM POMPA (API v3.x) ────────────────────────────────────
+const int TRIG1_PIN  = 13;       // GPIO ke TRIG1 modul MOSFET (Q1)
+const int TRIG2_PIN  = 14;       // GPIO ke TRIG2 modul MOSFET (Q2, paralel Q1)
+
+const int PWM_FREQ   = 5000;     // 5 kHz — cocok untuk pompa DC brushed
+const int PWM_RES    = 8;        // 8-bit: nilai 0–255
+
+const int SPEED_OFF  = 0;
+const int SPEED_MIN  = 80;       // ~31% — pompa mulai berputar
+const int SPEED_MAX  = 255;      // 100%
+
+// ─── Batas mapping DSM → PWM ─────────────────────────────────
+const float DSM_MIN  = 1000.0;   // Di bawah ini pompa OFF
+const float DSM_MAX  = 5000.0;   // Di atas ini pompa FULL
+
+int    pumpPWM    = 0;
+String pumpStatus = "OFF";
+bool   pumpManual = false;       // Flag untuk override kontrol manual dari web
+
+// ─── TIMERS FOR WEBSOCKET ────────────────────────────────────
 unsigned long lastStatusUpdate = 0;
-const unsigned long SENSOR_INTERVAL = 1000;  // 1 second
-const unsigned long STATUS_INTERVAL = 5000;  // 5 seconds
+const unsigned long STATUS_INTERVAL = 5000UL; // Kirim status setiap 5 detik
 
-// ============================================
-// SETUP
-// ============================================
+// ─────────────────────────────────────────────────────────────
+//  SET KECEPATAN POMPA
+// ─────────────────────────────────────────────────────────────
+void setPumpSpeed(int speed) {
+  speed = constrain(speed, SPEED_OFF, SPEED_MAX);
+  ledcWrite(TRIG1_PIN, speed);   // API v3.x — langsung pin
+  ledcWrite(TRIG2_PIN, speed);
+  pumpPWM = speed;
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-
-  Serial.println("\n\n╔════════════════════════════════════╗");
-  Serial.println("║  ASAP MONITOR ESP32 - Initializing  ║");
-  Serial.println("╚════════════════════════════════════╝\n");
-
-  // Initialize pins
-  pinMode(PUMP_PIN, OUTPUT);
-  pinMode(BLOWER_PIN, OUTPUT);
-  pinMode(DSM501A_PIN, INPUT);
-  digitalWrite(PUMP_PIN, HIGH);  // Turn on initially
-  digitalWrite(BLOWER_PIN, HIGH);
-
-  // Connect to WiFi
-  connectWiFi();
-
-  // Initialize WebSocket
-  setupWebSocket();
-
-  Serial.println("\n✅ Setup complete! Waiting for WebSocket connection...\n");
+  if      (speed == 0)    pumpStatus = "OFF";
+  else if (speed < 128)   pumpStatus = "LOW";
+  else if (speed < 220)   pumpStatus = "MED";
+  else                    pumpStatus = "FULL";
 }
 
-// ============================================
-// MAIN LOOP
-// ============================================
-
-void loop() {
-  webSocket.loop();
-
-  // Read sensors every 1 second
-  if (millis() - lastSensorRead > SENSOR_INTERVAL) {
-    readSensors();
-    lastSensorRead = millis();
-  }
-
-  // Send status update every 5 seconds
-  if (millis() - lastStatusUpdate > STATUS_INTERVAL) {
-    sendStatusUpdate();
-    lastStatusUpdate = millis();
-  }
-
-  // Check for lost connection
-  checkConnection();
-}
-
-// ============================================
-// WiFi CONNECTION
-// ============================================
-
-void connectWiFi() {
-  Serial.println("🔌 Connecting to WiFi: " + String(SSID));
-  WiFi.begin(SSID, PASSWORD);
-
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✅ WiFi Connected!");
-    Serial.print("📶 IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\n❌ WiFi connection failed!");
-  }
-}
-
-// ============================================
-// WEBSOCKET SETUP
-// ============================================
-
-void setupWebSocket() {
-  Serial.println("🔌 Setting up WebSocket...");
+// ─────────────────────────────────────────────────────────────
+//  HITUNG PWM DARI KONSENTRASI DSM (ganti potensiometer)
+// ─────────────────────────────────────────────────────────────
+void updatePumpFromDSM(float conc) {
+  if (pumpManual) return; // Jangan ubah jika sedang dalam mode manual dari web
   
-  webSocket.begin(SOCKET_SERVER, SOCKET_PORT, "/");
-  webSocket.onEvent(webSocketEvent);
-  webSocket.setReconnectInterval(5000);
-}
-
-void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
-  switch (type) {
-    case WStype_DISCONNECTED:
-      Serial.println("❌ WebSocket disconnected");
-      break;
-
-    case WStype_CONNECTED: {
-      Serial.println("✅ WebSocket connected to server");
-      
-      // Register device
-      DynamicJsonDocument doc(256);
-      doc["device_id"] = DEVICE_ID;
-      doc["name"] = DEVICE_NAME;
-      doc["type"] = "sensor";
-      
-      String json;
-      serializeJson(doc, json);
-      webSocket.sendTXT(json);
-      break;
-    }
-
-    case WStype_TEXT: {
-      Serial.println("📨 Received: " + String((char*)payload));
-      
-      // Parse command
-      DynamicJsonDocument doc(256);
-      DeserializationError error = deserializeJson(doc, payload, length);
-      
-      if (!error) {
-        String command = doc["command"];
-        
-        if (command == "PUMP_ON") {
-          pumpOn = true;
-          digitalWrite(PUMP_PIN, HIGH);
-          Serial.println("💧 PUMP turned ON");
-        } 
-        else if (command == "PUMP_OFF") {
-          pumpOn = false;
-          digitalWrite(PUMP_PIN, LOW);
-          Serial.println("💧 PUMP turned OFF");
-        } 
-        else if (command == "BLOWER_ON") {
-          blowerOn = true;
-          digitalWrite(BLOWER_PIN, HIGH);
-          Serial.println("💨 BLOWER turned ON");
-        } 
-        else if (command == "BLOWER_OFF") {
-          blowerOn = false;
-          digitalWrite(BLOWER_PIN, LOW);
-          Serial.println("💨 BLOWER turned OFF");
-        }
-        else if (command == "BLOWER_SET_SPEED") {
-          int speed = doc["payload"]["speed"];
-          blowerSpeed = speed;
-          // Implement PWM speed control if needed
-          Serial.printf("💨 BLOWER speed set to %d%%\n", speed);
-        }
-
-        // Send acknowledgment
-        DynamicJsonDocument ack(256);
-        ack["status"] = "ACK";
-        ack["command"] = command;
-        
-        String ackJson;
-        serializeJson(ack, ackJson);
-        webSocket.sendTXT(ackJson);
-      }
-      break;
-    }
-
-    case WStype_ERROR:
-      Serial.println("❌ WebSocket error");
-      break;
+  if (conc < DSM_MIN) {
+    setPumpSpeed(SPEED_OFF);
+  } else {
+    int rawPWM = (int)((conc - DSM_MIN) / (DSM_MAX - DSM_MIN) * 255.0f);
+    rawPWM     = constrain(rawPWM, 0, 255);
+    int speed  = map(rawPWM, 0, 255, SPEED_MIN, SPEED_MAX);
+    setPumpSpeed(speed);
   }
 }
 
-// ============================================
-// SENSOR READING
-// ============================================
-
-void readSensors() {
-  // Read TDS sensor
-  int tdsRaw = analogRead(TDS_PIN);
-  float tds = ((tdsRaw / 4095.0) * 1000.0) + 2;
-  tdsValue = tds;
-
-  // Read Turbidity sensor
-  int turbidityRaw = analogRead(TURBIDITY_PIN);
-  float turbidity = (turbidityRaw / 4095.0) * 100.0;
-  turbidityValue = turbidity;
-
-  // Read MQ135 (Air Quality)
-  int mq135Raw = analogRead(MQ135_PIN);
-  mq135Value = (mq135Raw / 4095.0) * 100.0; // Simulated calculation
-
-  // Read MQ7 (CO Gas)
-  int mq7Raw = analogRead(MQ7_PIN);
-  mq7Value = (mq7Raw / 4095.0) * 50.0; // Simulated calculation
-
-  // Read DSM501A (Dust/PM2.5) - Simplified pulse reading
-  unsigned long duration = pulseIn(DSM501A_PIN, LOW, 1000000); // 1 sec timeout
-  float ratio = duration / 10000.0; // simplified ratio
-  dustValue = ratio > 0 ? (1.1 * pow(ratio, 3) - 3.8 * pow(ratio, 2) + 520 * ratio + 0.62) : 0;
-
-  // Print to Serial
-  Serial.printf("📥 TDS: %.2f | Turb: %.2f | MQ135: %.2f | MQ7: %.2f | Dust: %.2f\n", tds, turbidity, mq135Value, mq7Value, dustValue);
-
-  // Send sensor data via WebSocket
-  if (webSocket.isConnected()) {
-    sendSensorData();
+// ─────────────────────────────────────────────────────────────
+//  TURBIDITY
+// ─────────────────────────────────────────────────────────────
+int readTurbidityADC() {
+  long total = 0;
+  for (int i = 0; i < TURB_SAMPLES; i++) {
+    total += analogRead(TURBIDITY_PIN);
+    delay(10);
   }
+  return total / TURB_SAMPLES;
 }
 
+String getTurbCondition(int adc) {
+  if (adc > 950) return "Sgt Jernih";
+  if (adc > 850) return "Jernih";
+  if (adc > 700) return "Agak Keruh";
+  if (adc > 550) return "Keruh";
+  return "Sgt Keruh";
+}
+
+// ─────────────────────────────────────────────────────────────
+//  DSM STATUS
+// ─────────────────────────────────────────────────────────────
+String getDsmStatus(float conc) {
+  if (conc < 1000) return "BERSIH";
+  if (conc < 5000) return "SEDANG";
+  return "BURUK";
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MQ-7
+// ─────────────────────────────────────────────────────────────
+void readMQ7() {
+  long total = 0;
+  for (int i = 0; i < 50; i++) {
+    total += analogRead(MQ7_PIN);
+    delay(20);
+  }
+  float adc           = total / 50.0;
+  float vout          = adc * (3.3f / 4095.0f);
+  float sensorVoltage = vout * 1.5f;
+  float Rs            = RL * ((5.0f - sensorVoltage) / sensorVoltage);
+  float ratio         = Rs / Ro;
+  mq7ppm              = 99.042f * pow(ratio, -1.518f);
+
+  if      (mq7ppm < 10) mq7Status = "AMAN";
+  else if (mq7ppm < 35) mq7Status = "WASPADA";
+  else                  mq7Status = "BAHAYA";
+
+  Serial.println("========== MQ-7 ==========");
+  Serial.print("ADC            : "); Serial.println(adc);
+  Serial.print("Sensor Voltage : "); Serial.print(sensorVoltage); Serial.println(" V");
+  Serial.print("Rs             : "); Serial.print(Rs);            Serial.println(" kOhm");
+  Serial.print("Ro             : "); Serial.print(Ro);            Serial.println(" kOhm");
+  Serial.print("Rs/Ro          : "); Serial.println(ratio);
+  Serial.print("CO             : "); Serial.print(mq7ppm);        Serial.println(" ppm");
+  Serial.print("Status         : "); Serial.println(mq7Status);
+  Serial.println("==========================");
+}
+
+// ─────────────────────────────────────────────────────────────
+//  UPDATE OLED
+// ─────────────────────────────────────────────────────────────
+void updateDisplay() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+
+  // Baris 1 — Turbidity
+  display.setCursor(0, 0);
+  display.print("TURB:");
+  display.print(turbAdc);
+  display.print(" ");
+  display.print(turbVoltage, 2);
+  display.print("V ");
+  display.print(turbKondisi);
+
+  // Baris 2 — MQ-7
+  display.setCursor(0, 11);
+  display.print("CO  :");
+  display.print(mq7ppm, 1);
+  display.print("ppm [");
+  display.print(mq7Status);
+  display.print("]");
+
+  // Garis pemisah
+  display.drawFastHLine(0, 22, SCREEN_WIDTH, WHITE);
+
+  // Baris 3 — DSM
+  display.setCursor(0, 25);
+  display.print("DSM :");
+  display.print(dsmConcentration, 0);
+  display.print("p/cf [");
+  display.print(dsmStatus);
+  display.print("]");
+
+  // Baris 4 — DSM Ratio
+  display.setCursor(0, 35);
+  display.print("Ratio:");
+  display.print(dsmRatio, 2);
+  display.print("%");
+
+  // Garis pemisah
+  display.drawFastHLine(0, 46, SCREEN_WIDTH, WHITE);
+
+  // Baris 5 — Pompa
+  display.setCursor(0, 49);
+  display.print("PUMP:");
+  display.print(pumpPWM);
+  display.print("/255 [");
+  display.print(pumpStatus);
+  display.print("]");
+
+  // Baris 6 — Bar progress pompa
+  int barWidth = map(pumpPWM, 0, 255, 0, SCREEN_WIDTH);
+  display.fillRect(0, 59, barWidth, 5, WHITE);
+  display.drawRect(0, 59, SCREEN_WIDTH, 5, WHITE);
+
+  display.display();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  KIRIM DATA SENSOR KE BACKEND (JSON via WebSocket)
+// ─────────────────────────────────────────────────────────────
 void sendSensorData() {
-  DynamicJsonDocument doc(512);
+  if (!webSocket.isConnected()) return;
+
+  DynamicJsonDocument doc(1024);
   doc["type"] = "sensor_data";
   doc["device_id"] = DEVICE_ID;
   
   JsonArray readings = doc.createNestedArray("readings");
   
-  JsonObject tdsReading = readings.createNestedObject();
-  tdsReading["type"] = "TDS";
-  tdsReading["value"] = tdsValue;
-  tdsReading["unit"] = "ppm";
-  
-  JsonObject turbidityReading = readings.createNestedObject();
-  turbidityReading["type"] = "TURBIDITY";
-  turbidityReading["value"] = turbidityValue;
-  turbidityReading["unit"] = "NTU";
+  JsonObject dsmReading = readings.createNestedObject();
+  dsmReading["type"] = "DSM501A";
+  dsmReading["value"] = dsmConcentration;
+  dsmReading["unit"] = "pcs/0.01cf";
 
-  JsonObject mq135Reading = readings.createNestedObject();
-  mq135Reading["type"] = "MQ135";
-  mq135Reading["value"] = mq135Value;
-  mq135Reading["unit"] = "ppm";
+  JsonObject dsmRatioReading = readings.createNestedObject();
+  dsmRatioReading["type"] = "DSM501A_RATIO";
+  dsmRatioReading["value"] = dsmRatio;
+  dsmRatioReading["unit"] = "%";
+
+  JsonObject turbidityReading = readings.createNestedObject();
+  turbidityReading["type"] = "TURBIDITY_ADC";
+  turbidityReading["value"] = turbAdc;
+  turbidityReading["unit"] = "ADC";
+
+  JsonObject turbidityVoltReading = readings.createNestedObject();
+  turbidityVoltReading["type"] = "TURBIDITY_VOLT";
+  turbidityVoltReading["value"] = turbVoltage;
+  turbidityVoltReading["unit"] = "V";
 
   JsonObject mq7Reading = readings.createNestedObject();
   mq7Reading["type"] = "MQ7";
-  mq7Reading["value"] = mq7Value;
+  mq7Reading["value"] = mq7ppm;
   mq7Reading["unit"] = "ppm";
-
-  JsonObject dustReading = readings.createNestedObject();
-  dustReading["type"] = "DSM501A";
-  dustReading["value"] = dustValue;
-  dustReading["unit"] = "ug/m3";
 
   String json;
   serializeJson(doc, json);
   webSocket.sendTXT(json);
 }
 
-// ============================================
-// DEVICE STATUS UPDATE
-// ============================================
-
+// ─────────────────────────────────────────────────────────────
+//  KIRIM STATUS AKTIF POMPA KE BACKEND (JSON via WebSocket)
+// ─────────────────────────────────────────────────────────────
 void sendStatusUpdate() {
   if (!webSocket.isConnected()) return;
 
@@ -299,36 +284,74 @@ void sendStatusUpdate() {
   
   JsonObject components = doc.createNestedObject("components");
   
-  // Pump status
   JsonObject pump = components.createNestedObject("pump");
-  pump["status"] = pumpOn ? "ON" : "OFF";
-  pump["load"] = pumpOn ? (58 + random(24)) : 0;  // Simulate load
-  
-  // Blower status
-  JsonObject blower = components.createNestedObject("blower");
-  blower["status"] = blowerOn ? "ON" : "OFF";
-  blower["rpm"] = blowerOn ? (1350 + random(550)) : 0;  // Simulate RPM
-  blower["speed"] = blowerOn ? blowerSpeed : 0;
+  pump["status"] = (pumpPWM > 0) ? "ON" : "OFF";
+  pump["load"] = map(pumpPWM, 0, 255, 0, 100);
+  pump["speed_text"] = pumpStatus;
+  pump["manual"] = pumpManual;
 
   String json;
   serializeJson(doc, json);
   webSocket.sendTXT(json);
-
-  Serial.printf("📡 Status: Pump=%s Load=%d%% | Blower=%s RPM=%d%%\n",
-                pumpOn ? "ON" : "OFF",
-                pumpOn ? 68 : 0,
-                blowerOn ? "ON" : "OFF",
-                blowerSpeed);
 }
 
-// ============================================
-// CONNECTION MONITORING
-// ============================================
+// ─────────────────────────────────────────────────────────────
+//  WEBSOCKET EVENT HANDLER
+// ─────────────────────────────────────────────────────────────
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch (type) {
+    case WStype_DISCONNECTED:
+      Serial.println(" WebSocket disconnected");
+      break;
 
+    case WStype_CONNECTED:
+      Serial.println(" WebSocket connected to server");
+      break;
+
+    case WStype_TEXT: {
+      Serial.println(" Received: " + String((char*)payload));
+      
+      DynamicJsonDocument doc(256);
+      DeserializationError error = deserializeJson(doc, payload, length);
+      
+      if (!error) {
+        String command = doc["command"];
+        
+        if (command == "PUMP_ON") {
+          pumpManual = true;
+          setPumpSpeed(SPEED_MAX);
+          Serial.println(" Manual Override: PUMP turned ON (FULL)");
+        } 
+        else if (command == "PUMP_OFF") {
+          pumpManual = true;
+          setPumpSpeed(SPEED_OFF);
+          Serial.println(" Manual Override: PUMP turned OFF");
+        } 
+        else if (command == "PUMP_AUTO") {
+          pumpManual = false;
+          updatePumpFromDSM(dsmConcentration);
+          Serial.println(" PUMP control returned to AUTO (DSM501A)");
+        }
+
+        sendStatusUpdate();
+        updateDisplay();
+      }
+      break;
+    }
+
+    case WStype_ERROR:
+      Serial.println(" WebSocket error");
+      break;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MENGELOLA KONEKSI WIFI & WEBSOCKET
+// ─────────────────────────────────────────────────────────────
 void checkConnection() {
   static unsigned long lastHeartbeat = 0;
-
-  // Send heartbeat every 30 seconds
+  
+  // Heartbeat ke WebSocket setiap 30 detik
   if (millis() - lastHeartbeat > 30000) {
     if (webSocket.isConnected()) {
       DynamicJsonDocument doc(128);
@@ -338,71 +361,140 @@ void checkConnection() {
       String json;
       serializeJson(doc, json);
       webSocket.sendTXT(json);
-      
-      Serial.println("💓 Heartbeat sent");
     }
     lastHeartbeat = millis();
   }
 
-  // Check WiFi
+  // Cek Koneksi WiFi
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("⚠️ WiFi disconnected! Reconnecting...");
-    connectWiFi();
+    Serial.println(" WiFi terputus! Reconnecting...");
+    WiFi.disconnect();
+    WiFi.begin(SSID, PASSWORD);
   }
 }
 
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
+// ─────────────────────────────────────────────────────────────
+//  SETUP
+// ─────────────────────────────────────────────────────────────
+void setup() {
+  Serial.begin(115200);
 
-// For testing: Can add API endpoint to manually trigger commands
-void processCommand(String cmd) {
-  if (cmd == "PUMP_ON") {
-    pumpOn = true;
-    digitalWrite(PUMP_PIN, HIGH);
-  } 
-  else if (cmd == "PUMP_OFF") {
-    pumpOn = false;
-    digitalWrite(PUMP_PIN, LOW);
+  analogReadResolution(12);
+  pinMode(DUST_PIN, INPUT_PULLUP);
+
+  // PWM Pompa — API v3.x
+  ledcAttach(TRIG1_PIN, PWM_FREQ, PWM_RES);
+  ledcAttach(TRIG2_PIN, PWM_FREQ, PWM_RES);
+  setPumpSpeed(SPEED_OFF);
+
+  Wire.begin(21, 22);
+
+  // Inisialisasi OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED gagal!");
+    while (true);
   }
-  else if (cmd == "BLOWER_ON") {
-    blowerOn = true;
-    digitalWrite(BLOWER_PIN, HIGH);
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(5, 10);
+  display.println("Turb+DSM+MQ7+PUMP");
+  display.setCursor(5, 25);
+  display.println("Connecting WiFi...");
+  display.display();
+
+  // Koneksi WiFi
+  WiFi.begin(SSID, PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
   }
-  else if (cmd == "BLOWER_OFF") {
-    blowerOn = false;
-    digitalWrite(BLOWER_PIN, LOW);
-  }
+  Serial.println("\n WiFi Connected!");
+  
+  display.setCursor(5, 40);
+  display.println("WiFi Connected!");
+  display.setCursor(5, 50);
+  display.print("IP: "); display.println(WiFi.localIP());
+  display.display();
+  delay(1500);
+
+  // Setup WebSocket
+  Serial.println(" Setting up WebSocket...");
+  webSocket.begin(SOCKET_SERVER, SOCKET_PORT, "/ws?device_id=" + String(DEVICE_ID));
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(5000);
+
+  dsmStartTime   = millis();
+  lastTurbUpdate = millis();
+  lastMQ7Update  = millis();
+
+  Serial.println("Sistem siap. Input pompa: DSM501A");
 }
 
-// ============================================
-// NOTES & IMPROVEMENTS
-// ============================================
+// ─────────────────────────────────────────────────────────────
+//  LOOP
+// ─────────────────────────────────────────────────────────────
+void loop() {
+  webSocket.loop();
+  unsigned long now = millis();
 
-/*
-TODO:
-1. Add calibration values for TDS sensor
-2. Implement EEPROM storage for device config
-3. Add fallback HTTP polling if WebSocket fails
-4. Implement OTA (Over-The-Air) updates
-5. Add SD card logging for data backup
-6. Implement PWM for blower speed control
-7. Add temperature sensor monitoring
-8. Add water level sensor
-9. Implement battery backup monitoring
-10. Add status LED indicators
+  // ── Sampling DSM501A (non-blocking) ──────────────────────
+  unsigned long duration = pulseIn(DUST_PIN, LOW, 100000UL);
+  lowpulseoccupancy += duration;
 
-PINS USED:
-- GPIO 34: Analog input TDS sensor
-- GPIO 35: Analog input Turbidity sensor
-- GPIO 12: Digital output Pump relay
-- GPIO 13: Digital output Blower relay
+  // ── DSM: hitung & update pompa setiap 30 detik ───────────
+  if ((now - dsmStartTime) >= DSM_SAMPLE_MS) {
+    dsmRatio         = lowpulseoccupancy / (DSM_SAMPLE_MS * 10.0f);
+    dsmConcentration = 1.1f  * pow(dsmRatio, 3)
+                     - 3.8f  * pow(dsmRatio, 2)
+                     + 520.0f * dsmRatio
+                     + 0.62f;
+    dsmStatus = getDsmStatus(dsmConcentration);
 
-LIBRARIES NEEDED:
-- WebSocketsClient by Markus Sattler
-- ArduinoJson by Benoit Blanchon
+    updatePumpFromDSM(dsmConcentration);
 
-INSTALLATION:
-Sketch → Include Library → Manage Libraries
-Search for: WebSocketsClient, ArduinoJson
-*/
+    lowpulseoccupancy = 0;
+    dsmStartTime      = millis();
+
+    Serial.println("===== DSM501A + PUMP =====");
+    Serial.print("Ratio         : "); Serial.print(dsmRatio, 3);         Serial.println(" %");
+    Serial.print("Concentration : "); Serial.print(dsmConcentration, 1); Serial.println(" pcs/0.01cf");
+    Serial.print("Status Debu   : "); Serial.println(dsmStatus);
+    Serial.print("PWM Pompa     : "); Serial.print(pumpPWM);             Serial.print(" / 255  (");
+    Serial.print(map(pumpPWM, 0, 255, 0, 100));                          Serial.println("%)");
+    Serial.print("Status Pompa  : "); Serial.println(pumpStatus);
+    Serial.println("==========================");
+
+    updateDisplay();
+    sendStatusUpdate();
+    sendSensorData();
+  }
+
+  // ── Turbidity: baca setiap 1 detik ───────────────────────
+  if ((now - lastTurbUpdate) >= TURB_INTERVAL) {
+    turbAdc     = readTurbidityADC();
+    turbVoltage = turbAdc * (3.3f / 4095.0f);
+    turbKondisi = getTurbCondition(turbAdc);
+    lastTurbUpdate = millis();
+
+    Serial.print("[TURBIDITY] ADC: "); Serial.print(turbAdc);
+    Serial.print(" | Volt: ");         Serial.print(turbVoltage, 3);
+    Serial.print(" V | ");             Serial.println(turbKondisi);
+
+    updateDisplay();
+    sendSensorData();
+  }
+
+  // ── MQ-7: baca setiap 2 detik ────────────────────────────
+  if ((now - lastMQ7Update) >= MQ7_INTERVAL) {
+    readMQ7();
+    lastMQ7Update = millis();
+    updateDisplay();
+    sendSensorData();
+  }
+
+  // Cek Heartbeat & WiFi reconnect
+  checkConnection();
+}

@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { pgClient, redisClient } from '../config/database';
+import { getRawDeviceClient } from './rawDeviceSocket';
 
 export const initializeWebSocket = (io: Server) => {
   io.on('connection', (socket: Socket) => {
@@ -73,12 +74,19 @@ export const initializeWebSocket = (io: Server) => {
              [device_id, command, JSON.stringify(payload || {})]
            );
 
-           // Teruskan pesan WebSocket langsung ke ESP32
-           io.to(`device:${device_id}`).emit('command', {
+           // Teruskan pesan WebSocket langsung ke ESP32 (Socket.IO rooms)
+           const cmdObj = {
              id: result.rows[0].id,
              command,
              payload
-           });
+           };
+           io.to(`device:${device_id}`).emit('command', cmdObj);
+
+           // Juga kirim via raw WebSocket (ESP32 pakai WebSocketsClient)
+           const rawClient = getRawDeviceClient(device_id);
+           if (rawClient && rawClient.readyState === 1) {
+             rawClient.send(JSON.stringify(cmdObj));
+           }
         } catch (error) {
            console.error('Gagal mengirim perintah:', error);
         }

@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { connectDB } from './config/database';
 import apiRoutes from './routes/api';
 import { initializeWebSocket } from './websocket/socketHandler';
+import { setupRawWebSocket } from './websocket/rawDeviceSocket';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use('/api', apiRoutes);
 
 // Menginisialisasi WebSocket
 initializeWebSocket(io);
+setupRawWebSocket(httpServer, io);
 
 const PORT = process.env.PORT || 3001;
 

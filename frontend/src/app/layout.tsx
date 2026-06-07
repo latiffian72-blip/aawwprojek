@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { Poppins, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const ibmPlexMono = IBM_Plex_Mono({
+const poppins = Poppins({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-ibm-plex-mono",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
 });
 
-const plusJakartaSans = Plus_Jakarta_Sans({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-plus-jakarta-sans",
+  weight: ["400", "500", "600"],
+  variable: "--font-jetbrains-mono",
 });
 
 export const metadata: Metadata = {
@@ -28,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id">
-      <body className={`${ibmPlexMono.variable} ${plusJakartaSans.variable}`}>
+      <body className={`${poppins.variable} ${jetbrainsMono.variable}`}>
         <SocketProvider>
           {children}
         </SocketProvider>

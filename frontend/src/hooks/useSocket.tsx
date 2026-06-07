@@ -33,7 +33,7 @@ export interface LogEntry {
   id: number;
   time: string;
   msg: string;
-  type: 'info' | 'warn' | 'error';
+  type: "info" | "warn" | "error";
 }
 
 interface SocketContextType {
@@ -42,7 +42,7 @@ interface SocketContextType {
   sensorData: SensorData | null;
   systemStatus: SystemStatus | null;
   logs: LogEntry[];
-  addLog: (msg: string, type?: 'info' | 'warn' | 'error') => void;
+  addLog: (msg: string, type?: "info" | "warn" | "error") => void;
   sendCommand: (command: string, payload?: any) => void;
 }
 
@@ -74,9 +74,14 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [logs]);
 
-  const addLog = (msg: string, type: 'info' | 'warn' | 'error' = 'info') => {
+  const addLog = (msg: string, type: "info" | "warn" | "error" = "info") => {
     const time = new Date().toLocaleTimeString("id-ID");
-    setLogs(prev => [{ id: Date.now() + Math.random(), time, msg, type }, ...prev].slice(0, 100)); // Simpan 100 log terakhir
+    setLogs((prev) =>
+      [{ id: Date.now() + Math.random(), time, msg, type }, ...prev].slice(
+        0,
+        100,
+      ),
+    ); // Simpan 100 log terakhir
   };
 
   useEffect(() => {
@@ -121,7 +126,17 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected, sensorData, systemStatus, logs, addLog, sendCommand }}>
+    <SocketContext.Provider
+      value={{
+        socket,
+        isConnected,
+        sensorData,
+        systemStatus,
+        logs,
+        addLog,
+        sendCommand,
+      }}
+    >
       {children}
     </SocketContext.Provider>
   );
