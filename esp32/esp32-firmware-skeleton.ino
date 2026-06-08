@@ -9,7 +9,7 @@
 const char* SSID = "UDINUS I.4";
 const char* PASSWORD = "";
 
-const char* SOCKET_SERVER = "192.168.1.100";  // Backend IP
+const char* SOCKET_SERVER = "152.42.253.251";  // Backend IP
 const uint16_t SOCKET_PORT = 3001;
 
 const char* DEVICE_ID = "esp32_01";
