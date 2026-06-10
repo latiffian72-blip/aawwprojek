@@ -7,6 +7,8 @@ services:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: asap_monitor
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     ports:
       - "5432:5432"
     volumes:
@@ -54,6 +56,60 @@ services:
     depends_on:
       - backend
 
+  # ─── MONITORING STACK ────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: asap_loki
+    restart: always
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: asap_alloy
+    restart: always
+    volumes:
+      - ./monitoring/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    depends_on:
+      - loki
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: asap_grafana
+    restart: always
+    ports:
+      - "3200:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=asapmonitor123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    depends_on:
+      - loki
+      - db
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
 volumes:
   postgres_data:
   redis_data:
+  loki_data:
+  grafana_data:
