@@ -75,6 +75,7 @@ services:
   alloy:
     image: grafana/alloy:latest
     container_name: asap_alloy
+    user: root
     restart: always
     volumes:
       - ./monitoring/alloy-config.alloy:/etc/alloy/config.alloy:ro

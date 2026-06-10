@@ -20,6 +20,7 @@ datasources:
     jsonData:
       sslmode: disable
       maxOpenConns: 10
+      database: asap_monitor
       maxIdleConns: 2
       connMaxLifetime: 14400
       postgresVersion: 1500
