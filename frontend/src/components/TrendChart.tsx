@@ -88,7 +88,7 @@ export default function TrendChart({ currentReadings }: TrendChartProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-2 mb-4">
+      <div className="flex flex-col sm:flex-row justify-between gap-2 mb-4">
         <StatBox
           label="Rata-rata AQ"
           value={avg("MQ135")}
@@ -183,7 +183,7 @@ function StatBox({
   color: string;
 }) {
   return (
-    <div className="bg-surface rounded-lg px-3 py-2 border border-border/50">
+    <div className="bg-surface rounded-lg px-3 py-2 border border-border/50 w-full">
       <p className="font-mono text-[7px] text-dim mb-1 uppercase tracking-wider">
         {label}
       </p>
