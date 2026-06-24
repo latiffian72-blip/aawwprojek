@@ -13,7 +13,8 @@ export async function POST(request: Request) {
         value: 'authenticated_user',
         httpOnly: true,
         path: '/',
-        secure: process.env.NODE_ENV === 'production',
+        secure: false, // Set true hanya jika sudah pakai HTTPS
+        sameSite: 'lax',
         maxAge: 60 * 60 * 24, // 1 hari
       });
 
