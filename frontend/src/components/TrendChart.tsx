@@ -99,7 +99,7 @@ export default function TrendChart({ currentReadings }: TrendChartProps) {
         <StatBox
           label="Avg BME680"
           value={avg("BME680")}
-          unit="IAQ"
+          unit="mg/m³"
           color="text-accent"
         />
         <StatBox

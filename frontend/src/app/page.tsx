@@ -152,7 +152,7 @@ export default function Dashboard() {
             id="bme680"
             name="BME680"
             label="Kualitas VOC"
-            unit="IAQ"
+            unit="mg/m³"
             color="teal"
             value={getReading("BME680")}
             maxValue={500}
