@@ -33,27 +33,24 @@ int    turbAdc     = 0;
 float  turbVoltage = 0;
 String turbKondisi = "---";
 
-// ─── DSM501A ─────────────────────────────────────────────────
-#define DUST_PIN 27
-const unsigned long DSM_SAMPLE_MS = 30000UL;
+// ─── WINSEN DUST SENSOR 1 (Kontrol Pompa) ────────────────────
+const int PIN_DUST1 = 32;
+unsigned long dust1StartTime = 0;
+float dust1Value = 0;
 
-unsigned long dsmStartTime      = 0;
-unsigned long lowpulseoccupancy = 0;
+// ─── WINSEN DUST SENSOR 2 (Monitoring) ───────────────────────
+const int PIN_DUST2 = 33;
+unsigned long dust2StartTime = 0;
+float dust2Value = 0;
 
 float  dsmRatio         = 0;
 float  dsmConcentration = 0;
 String dsmStatus        = "---";
 
-// ─── MQ-7 ────────────────────────────────────────────────────
-#define MQ7_PIN 35
-float RL = 10.0;
-float Ro = 1.73;
-
-unsigned long lastMQ7Update = 0;
-const unsigned long MQ7_INTERVAL = 2000UL;
-
-float  mq7ppm    = 0;
-String mq7Status = "---";
+// ─── BME680 (VOC Quality) ──────────────────────────────────────
+const int PIN_BME680_PLACEHOLDER = 34; // Sesuaikan dengan SDA/SCL jika I2C
+unsigned long lastBmeTime = 0;
+const unsigned long bmeInterval = 2000UL; // Kirim status setiap 5 detik
 
 // ─── PWM POMPA (API v3.x) ────────────────────────────────────
 const int TRIG1_PIN  = 13;       // GPIO ke TRIG1 modul MOSFET (Q1)
@@ -139,37 +136,6 @@ String getDsmStatus(float conc) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  MQ-7
-// ─────────────────────────────────────────────────────────────
-void readMQ7() {
-  long total = 0;
-  for (int i = 0; i < 50; i++) {
-    total += analogRead(MQ7_PIN);
-    delay(20);
-  }
-  float adc           = total / 50.0;
-  float vout          = adc * (3.3f / 4095.0f);
-  float sensorVoltage = vout * 1.5f;
-  float Rs            = RL * ((5.0f - sensorVoltage) / sensorVoltage);
-  float ratio         = Rs / Ro;
-  mq7ppm              = 99.042f * pow(ratio, -1.518f);
-
-  if      (mq7ppm < 10) mq7Status = "AMAN";
-  else if (mq7ppm < 35) mq7Status = "WASPADA";
-  else                  mq7Status = "BAHAYA";
-
-  Serial.println("========== MQ-7 ==========");
-  Serial.print("ADC            : "); Serial.println(adc);
-  Serial.print("Sensor Voltage : "); Serial.print(sensorVoltage); Serial.println(" V");
-  Serial.print("Rs             : "); Serial.print(Rs);            Serial.println(" kOhm");
-  Serial.print("Ro             : "); Serial.print(Ro);            Serial.println(" kOhm");
-  Serial.print("Rs/Ro          : "); Serial.println(ratio);
-  Serial.print("CO             : "); Serial.print(mq7ppm);        Serial.println(" ppm");
-  Serial.print("Status         : "); Serial.println(mq7Status);
-  Serial.println("==========================");
-}
-
-// ─────────────────────────────────────────────────────────────
 //  UPDATE OLED
 // ─────────────────────────────────────────────────────────────
 void updateDisplay() {
@@ -186,30 +152,25 @@ void updateDisplay() {
   display.print("V ");
   display.print(turbKondisi);
 
-  // Baris 2 — MQ-7
+  // Baris 2 — BME680 Placeholder
   display.setCursor(0, 11);
-  display.print("CO  :");
-  display.print(mq7ppm, 1);
-  display.print("ppm [");
-  display.print(mq7Status);
-  display.print("]");
+  display.print("IAQ : Placeholder");
 
   // Garis pemisah
   display.drawFastHLine(0, 22, SCREEN_WIDTH, WHITE);
 
-  // Baris 3 — DSM
+  // Baris 3 — DUST1
   display.setCursor(0, 25);
-  display.print("DSM :");
+  display.print("DUST1:");
   display.print(dsmConcentration, 0);
-  display.print("p/cf [");
+  display.print(" [");
   display.print(dsmStatus);
   display.print("]");
 
-  // Baris 4 — DSM Ratio
+  // Baris 4 — DUST2
   display.setCursor(0, 35);
-  display.print("Ratio:");
-  display.print(dsmRatio, 2);
-  display.print("%");
+  display.print("DUST2:");
+  display.print(dust2Value, 0);
 
   // Garis pemisah
   display.drawFastHLine(0, 46, SCREEN_WIDTH, WHITE);
@@ -230,6 +191,27 @@ void updateDisplay() {
   display.display();
 }
 
+// ─── Fungsi Baca BME680 ───────────────────────────────────────
+void sendBme680Reading() {
+  // Placeholder untuk pembacaan BME680
+  int rawVal = analogRead(PIN_BME680_PLACEHOLDER);
+  float iaqValue = map(rawVal, 0, 4095, 0, 500); // Simulasi nilai IAQ 0-500
+
+  StaticJsonDocument<256> doc;
+  doc["type"] = "sensor_data";
+  doc["deviceId"] = "esp32_01";
+  
+  JsonArray readings = doc.createNestedArray("readings");
+  JsonObject r = readings.createNestedObject();
+  r["type"] = "BME680";
+  r["value"] = iaqValue;
+  r["unit"] = "IAQ";
+
+  String jsonString;
+  serializeJson(doc, jsonString);
+  webSocket.sendTXT(jsonString);
+}
+
 // ─────────────────────────────────────────────────────────────
 //  KIRIM DATA SENSOR KE BACKEND (JSON via WebSocket)
 // ─────────────────────────────────────────────────────────────
@@ -242,15 +224,15 @@ void sendSensorData() {
   
   JsonArray readings = doc.createNestedArray("readings");
   
-  JsonObject dsmReading = readings.createNestedObject();
-  dsmReading["type"] = "DSM501A";
-  dsmReading["value"] = dsmConcentration;
-  dsmReading["unit"] = "pcs/0.01cf";
+  JsonObject dust1Reading = readings.createNestedObject();
+  dust1Reading["type"] = "DUST1";
+  dust1Reading["value"] = dust1Value;
+  dust1Reading["unit"] = "ug/m3";
 
-  JsonObject dsmRatioReading = readings.createNestedObject();
-  dsmRatioReading["type"] = "DSM501A_RATIO";
-  dsmRatioReading["value"] = dsmRatio;
-  dsmRatioReading["unit"] = "%";
+  JsonObject dust2Reading = readings.createNestedObject();
+  dust2Reading["type"] = "DUST2";
+  dust2Reading["value"] = dust2Value;
+  dust2Reading["unit"] = "ug/m3";
 
   JsonObject turbidityReading = readings.createNestedObject();
   turbidityReading["type"] = "TURBIDITY_ADC";
@@ -261,11 +243,6 @@ void sendSensorData() {
   turbidityVoltReading["type"] = "TURBIDITY_VOLT";
   turbidityVoltReading["value"] = turbVoltage;
   turbidityVoltReading["unit"] = "V";
-
-  JsonObject mq7Reading = readings.createNestedObject();
-  mq7Reading["type"] = "MQ7";
-  mq7Reading["value"] = mq7ppm;
-  mq7Reading["unit"] = "ppm";
 
   String json;
   serializeJson(doc, json);
@@ -329,8 +306,8 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         } 
         else if (command == "PUMP_AUTO") {
           pumpManual = false;
-          updatePumpFromDSM(dsmConcentration);
-          Serial.println(" PUMP control returned to AUTO (DSM501A)");
+          // if (pumpMode == PUMP_AUTO) {
+          Serial.println(" PUMP control returned to AUTO (DUST1)");
         }
 
         sendStatusUpdate();
@@ -380,7 +357,10 @@ void setup() {
   Serial.begin(115200);
 
   analogReadResolution(12);
-  pinMode(DUST_PIN, INPUT_PULLUP);
+  
+  pinMode(PIN_BME680_PLACEHOLDER, INPUT);
+  pinMode(PIN_DUST1, INPUT);
+  pinMode(PIN_DUST2, INPUT);
 
   // PWM Pompa — API v3.x
   ledcAttach(TRIG1_PIN, PWM_FREQ, PWM_RES);
@@ -399,7 +379,7 @@ void setup() {
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(5, 10);
-  display.println("Turb+DSM+MQ7+PUMP");
+  display.println("Turb+DUST1+2+BME");
   display.setCursor(5, 25);
   display.println("Connecting WiFi...");
   display.display();
@@ -428,9 +408,8 @@ void setup() {
 
   dsmStartTime   = millis();
   lastTurbUpdate = millis();
-  lastMQ7Update  = millis();
 
-  Serial.println("Sistem siap. Input pompa: DSM501A");
+  Serial.println("Sistem siap. Input pompa: DUST1");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -440,36 +419,42 @@ void loop() {
   webSocket.loop();
   unsigned long now = millis();
 
-  // ── Sampling DSM501A (non-blocking) ──────────────────────
-  unsigned long duration = pulseIn(DUST_PIN, LOW, 100000UL);
-  lowpulseoccupancy += duration;
+  // ── Sampling DUST1 & DUST2 (non-blocking, tiap 30 detik) ─
+  unsigned long durationDust = pulseIn(PIN_DUST1, LOW, 100000UL);
+  lowpulseoccupancy += durationDust;
 
-  // ── DSM: hitung & update pompa setiap 30 detik ───────────
+  // ── DUST1: hitung & update pompa setiap 30 detik ─────────
   if ((now - dsmStartTime) >= DSM_SAMPLE_MS) {
-    dsmRatio         = lowpulseoccupancy / (DSM_SAMPLE_MS * 10.0f);
-    dsmConcentration = 1.1f  * pow(dsmRatio, 3)
-                     - 3.8f  * pow(dsmRatio, 2)
-                     + 520.0f * dsmRatio
-                     + 0.62f;
-    dsmStatus = getDsmStatus(dsmConcentration);
+    float ratio         = lowpulseoccupancy / (DSM_SAMPLE_MS * 10.0f);
+    dust1Value = 1.1f * pow(ratio, 3) - 3.8f * pow(ratio, 2) + 520.0f * ratio + 0.62f;
+    // DUST2 placeholder — pembacaan dari sensor kedua (PIN_DUST2)
+    dust2Value = analogRead(PIN_DUST2) * (150.0f / 4095.0f);
+    dsmStatus  = getDsmStatus(dust1Value);
 
-    updatePumpFromDSM(dsmConcentration);
+    // Logika Auto Pompa hanya berdasarkan DUST1
+    updatePumpFromDSM(dust1Value);
 
     lowpulseoccupancy = 0;
     dsmStartTime      = millis();
 
-    Serial.println("===== DSM501A + PUMP =====");
-    Serial.print("Ratio         : "); Serial.print(dsmRatio, 3);         Serial.println(" %");
-    Serial.print("Concentration : "); Serial.print(dsmConcentration, 1); Serial.println(" pcs/0.01cf");
-    Serial.print("Status Debu   : "); Serial.println(dsmStatus);
-    Serial.print("PWM Pompa     : "); Serial.print(pumpPWM);             Serial.print(" / 255  (");
-    Serial.print(map(pumpPWM, 0, 255, 0, 100));                          Serial.println("%)");
-    Serial.print("Status Pompa  : "); Serial.println(pumpStatus);
-    Serial.println("==========================");
+    Serial.println("===== DUST1 (Kontrol) + PUMP =====");
+    Serial.print("Dust1 Konsentrasi : "); Serial.print(dust1Value, 1); Serial.println(" ug/m3");
+    Serial.print("Dust2 (Monitor)   : "); Serial.print(dust2Value, 1); Serial.println(" ug/m3");
+    Serial.print("Status Debu       : "); Serial.println(dsmStatus);
+    Serial.print("PWM Pompa         : "); Serial.print(pumpPWM); Serial.print(" / 255  (");
+    Serial.print(map(pumpPWM, 0, 255, 0, 100)); Serial.println("%)");
+    Serial.print("Status Pompa      : "); Serial.println(pumpStatus);
+    Serial.println("================================");
 
     updateDisplay();
     sendStatusUpdate();
     sendSensorData();
+  }
+
+  // ── BME680: baca setiap 2 detik ──────────────────────────
+  if ((now - lastBmeTime) >= bmeInterval) {
+    lastBmeTime = millis();
+    sendBme680Reading();
   }
 
   // ── Turbidity: baca setiap 1 detik ───────────────────────

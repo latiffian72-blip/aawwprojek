@@ -6,7 +6,7 @@ interface SensorCardProps {
   label: string;
   value: number;
   unit: string;
-  color: "teal" | "purple" | "amber" | "blue";
+  color: "teal" | "purple" | "amber" | "blue" | "orange";
   maxValue: number;
   goodThreshold: number;
   warnThreshold: number;
@@ -21,6 +21,7 @@ const colorMap = {
   purple: { card: "card-purple", ring: "#8B5CF6", bar: "bg-purple-500", statusGood: "text-purple-600", dotGood: "bg-purple-500" },
   amber:  { card: "card-amber",  ring: "#F59E0B", bar: "bg-amber",      statusGood: "text-success",    dotGood: "bg-success" },
   blue:   { card: "card-blue",   ring: "#0EA5E9", bar: "bg-blue",       statusGood: "text-blue",       dotGood: "bg-blue" },
+  orange: { card: "card-orange", ring: "#F97316", bar: "bg-orange",     statusGood: "text-orange",     dotGood: "bg-orange" },
 };
 
 const statusBadge = {

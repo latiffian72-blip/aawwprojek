@@ -12,9 +12,10 @@ export default function LogsPage() {
 
   const categories = [
     "Semua",
-    "MQ135",
+    "BME680",
     "MQ7",
-    "DSM501A",
+    "DUST1",
+    "DUST2",
     "TURBIDITY",
     "Sistem",
   ];
@@ -22,9 +23,10 @@ export default function LogsPage() {
   // Menentukan kategori setiap log berdasarkan isinya
   const getLogCategory = (log: LogEntry) => {
     const msg = log.msg.toUpperCase();
-    if (msg.includes("MQ135")) return "MQ135";
+    if (msg.includes("BME680")) return "BME680";
     if (msg.includes("MQ7")) return "MQ7";
-    if (msg.includes("DSM501A") || msg.includes("PM2.5")) return "DSM501A";
+    if (msg.includes("DUST1")) return "DUST1";
+    if (msg.includes("DUST2")) return "DUST2";
     if (msg.includes("TURBIDITY")) return "TURBIDITY";
     if (
       msg.includes("POMPA") ||
@@ -47,10 +49,10 @@ export default function LogsPage() {
   });
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-bg">
       <Sidebar />
       <main className="ml-0 md:ml-52 flex-1 min-h-screen p-5 flex flex-col">
-        <div className="mb-6">
+        <div className="mb-6 pt-14 md:pt-0">
           <h1 className="font-mono text-lg font-semibold text-text tracking-wide">
             Riwayat <span className="text-accent">Log Aktivitas</span>
           </h1>

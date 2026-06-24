@@ -15,9 +15,10 @@ interface TrendChartProps {
 
 interface ChartDataPoint {
   time: string;
-  MQ135: number;
+  BME680: number;
   MQ7: number;
-  DSM501A: number;
+  DUST1: number;
+  DUST2: number;
   TURBIDITY: number;
 }
 
@@ -67,18 +68,24 @@ export default function TrendChart({ currentReadings }: TrendChartProps) {
           </p>
         </div>
         <div className="flex flex-wrap gap-4">
-          <div className="flex items-center gap-1.5">
-            <div className="w-4 h-0.5 rounded-full bg-accent"></div>
-            <span className="font-mono text-[8px] text-dim">AQ (MQ135)</span>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-accent"></div>
+            <span className="font-mono text-[8px] text-dim">BME680 (VOC)</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-4 h-0.5 rounded-full bg-purple-500"></div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-purple-400"></div>
             <span className="font-mono text-[8px] text-dim">CO (MQ7)</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-4 h-0.5 rounded-full bg-amber"></div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-amber"></div>
             <span className="font-mono text-[8px] text-dim">
-              PM2.5 (DSM501A)
+              Dust 1 (Kontrol)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-orange"></div>
+            <span className="font-mono text-[8px] text-dim">
+              Dust 2 (Monitor)
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -90,22 +97,28 @@ export default function TrendChart({ currentReadings }: TrendChartProps) {
 
       <div className="flex flex-col sm:flex-row justify-between gap-2 mb-4">
         <StatBox
-          label="Rata-rata AQ"
-          value={avg("MQ135")}
-          unit="ppm"
+          label="Avg BME680"
+          value={avg("BME680")}
+          unit="IAQ"
           color="text-accent"
         />
         <StatBox
-          label="Rata-rata CO"
+          label="Avg CO"
           value={avg("MQ7")}
           unit="ppm"
           color="text-purple-400"
         />
         <StatBox
-          label="Rata-rata PM"
-          value={avg("DSM501A")}
+          label="Avg Dust 1"
+          value={avg("DUST1")}
           unit="μg/m³"
           color="text-amber"
+        />
+        <StatBox
+          label="Avg Dust 2"
+          value={avg("DUST2")}
+          unit="μg/m³"
+          color="text-orange"
         />
         <StatBox
           label="Rata-rata NTU"
@@ -129,7 +142,7 @@ export default function TrendChart({ currentReadings }: TrendChartProps) {
             />
             <Line
               type="monotone"
-              dataKey="MQ135"
+              dataKey="BME680"
               stroke="#00d4aa"
               strokeWidth={1.5}
               dot={false}
@@ -145,8 +158,16 @@ export default function TrendChart({ currentReadings }: TrendChartProps) {
             />
             <Line
               type="monotone"
-              dataKey="DSM501A"
+              dataKey="DUST1"
               stroke="#f59e0b"
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="DUST2"
+              stroke="#f97316"
               strokeWidth={1.5}
               dot={false}
               isAnimationActive={false}

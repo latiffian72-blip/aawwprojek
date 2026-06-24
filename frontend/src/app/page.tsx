@@ -93,9 +93,10 @@ export default function Dashboard() {
         if (prevValue !== undefined && prevValue !== r.value) {
           let logType: "info" | "warn" | "error" = "info";
           // Beri warna log warning/error jika nilai melewati batas wajar
-          if (r.type === "MQ135" && r.value > 300) logType = "warn";
+          if (r.type === "BME680" && r.value > 150) logType = "warn";
           if (r.type === "MQ7" && r.value > 50) logType = "warn";
-          if (r.type === "DSM501A" && r.value > 75) logType = "error";
+          if (r.type === "DUST1" && r.value > 75) logType = "error";
+          if (r.type === "DUST2" && r.value > 75) logType = "error";
 
           addLog(`${r.type} berubah: ${r.value} ${r.unit}`, logType);
         }
@@ -105,10 +106,10 @@ export default function Dashboard() {
   }, [sensorData, addLog]);
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-bg">
       <Sidebar />
       <main className="ml-0 md:ml-52 flex-1 min-h-screen p-5">
-        <div className="flex items-start justify-between mb-5">
+        <div className="flex flex-col md:flex-row md:items-start justify-between mb-5 pt-14 md:pt-0 gap-4 md:gap-0">
           <div>
             <h1 className="font-sans text-xl font-bold text-text">
               Monitor <span className="text-accent">ASAP</span>
@@ -146,17 +147,17 @@ export default function Dashboard() {
         <p className="font-sans text-[10px] font-semibold text-muted tracking-widest uppercase mb-3">
           Sensor Real-Time
         </p>
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 mb-5">
           <SensorCard
-            id="mq135"
-            name="MQ135"
-            label="Kualitas Udara"
-            unit="ppm"
+            id="bme680"
+            name="BME680"
+            label="Kualitas VOC"
+            unit="IAQ"
             color="teal"
-            value={getReading("MQ135")}
-            maxValue={600}
-            goodThreshold={200}
-            warnThreshold={400}
+            value={getReading("BME680")}
+            maxValue={500}
+            goodThreshold={100}
+            warnThreshold={200}
             goodLabel="BAIK"
             warnLabel="SEDANG"
             badLabel="BURUK"
@@ -176,12 +177,26 @@ export default function Dashboard() {
             badLabel="BAHAYA"
           />
           <SensorCard
-            id="dsm"
-            name="DSM501A"
-            label="Partikel PM2.5"
+            id="dust1"
+            name="DUST1"
+            label="Dust Sensor 1 (Kontrol)"
             unit="μg/m³"
             color="amber"
-            value={getReading("DSM501A")}
+            value={getReading("DUST1")}
+            maxValue={120}
+            goodThreshold={35}
+            warnThreshold={75}
+            goodLabel="BAIK"
+            warnLabel="SEDANG"
+            badLabel="BERBAHAYA"
+          />
+          <SensorCard
+            id="dust2"
+            name="DUST2"
+            label="Dust Sensor 2 (Monitor)"
+            unit="μg/m³"
+            color="orange"
+            value={getReading("DUST2")}
             maxValue={120}
             goodThreshold={35}
             warnThreshold={75}

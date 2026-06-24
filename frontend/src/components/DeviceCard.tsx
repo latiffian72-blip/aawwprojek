@@ -31,10 +31,9 @@ export default function DeviceCard({
           <p className="font-sans text-[9px] text-muted tracking-widest uppercase font-semibold">{id}</p>
           <p className="text-sm font-semibold text-text mt-0.5">{name}</p>
         </div>
+        {/* Status ON/OFF indicator — toggle switch disembunyikan */}
         <div className="flex flex-col items-center gap-1">
-          <div onClick={onToggle} className={`toggle-btn ${isOn ? 'on' : 'off'} w-12 h-6 rounded-full relative cursor-pointer`}>
-            <div className={`toggle-knob ${isOn ? 'on' : 'off'} absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm`}></div>
-          </div>
+          <div className={`w-3 h-3 rounded-full ${isOn ? (color === "green" ? "bg-emerald-500 blink" : "bg-orange-500 blink") : "bg-gray-300"}`}></div>
           <span className="font-sans text-[8px] text-dim font-semibold">{isOn ? "ON" : "OFF"}</span>
         </div>
       </div>

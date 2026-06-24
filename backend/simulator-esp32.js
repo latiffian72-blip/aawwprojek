@@ -20,25 +20,27 @@ socket.on("connect", () => {
   setInterval(() => {
     const tds = (200 + Math.random() * 50).toFixed(2);
     const turbidity = (20 + Math.random() * 10).toFixed(2);
-    const mq135 = (15 + Math.random() * 10).toFixed(2);
     const mq7 = (5 + Math.random() * 2).toFixed(2);
-    const dust = (0.05 + Math.random() * 0.02).toFixed(3);
+    const bme680 = (Math.random() * (150 - 50) + 50).toFixed(1);
+    const dust1 = (Math.random() * (60 - 10) + 10).toFixed(1);
+    const dust2 = (Math.random() * (50 - 5) + 5).toFixed(1);
 
     const fakeData = {
       device_id: "esp32_01",
       readings: [
-        { type: "TDS", value: parseFloat(tds), unit: "ppm" },
-        { type: "TURBIDITY", value: parseFloat(turbidity), unit: "NTU" },
-        { type: "MQ135", value: parseFloat(mq135), unit: "ppm" },
+        { type: "BME680", value: parseFloat(bme680), unit: "IAQ" },
         { type: "MQ7", value: parseFloat(mq7), unit: "ppm" },
-        { type: "DSM501A", value: parseFloat(dust), unit: "ug/m3" },
+        { type: "DUST1", value: parseFloat(dust1), unit: "ug/m3" },
+        { type: "DUST2", value: parseFloat(dust2), unit: "ug/m3" },
+        { type: "TURBIDITY", value: parseFloat(turbidity), unit: "NTU" },
+        { type: "TDS", value: parseFloat(tds), unit: "ppm" },
       ],
     };
 
     socket.emit("sensor_data", fakeData);
 
     process.stdout.write(
-      `\r📤 TDS:${tds} Turb:${turbidity} MQ135:${mq135} MQ7:${mq7} Dust:${dust}   `,
+      `\r📤 BME:${bme680} D1:${dust1} D2:${dust2} MQ7:${mq7} Turb:${turbidity} TDS:${tds}   `,
     );
   }, 1000);
 
