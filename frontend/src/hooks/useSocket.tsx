@@ -85,7 +85,8 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    const socketIo = io("http://localhost:3001", {
+    const backendUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
+    const socketIo = io(backendUrl, {
       transports: ["websocket"],
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
